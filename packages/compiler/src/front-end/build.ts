@@ -1709,6 +1709,9 @@ function buildEntity(
     if ("auto" in mixinSide)
       fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${name}: the mixin ${mixin.name} generates it with auto=, and ${entity.name} generates or declares it too`,
         mixin.position, "auto" in ownSide ? `remove :${name} from one of the two \`auto=\` lists` : `rename the entity's own :${name}, or stop using ${mixin.name}`);
+    else if ("auto" in ownSide)
+      fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${name}: the mixin ${mixin.name} declares it, and ${entity.name} generates it with auto=`,
+        mixin.position, `remove :${name} from the entity's \`auto=\` list, or stop using ${mixin.name}`);
     else
       fail("MESH_DUPLICATE_MEMBER", `Duplicate member :${name}: the mixin ${mixin.name} declares it, and so does ${entity.name}`,
         mixin.position, `remove or rename the entity's own :${name}, or stop using ${mixin.name}`);

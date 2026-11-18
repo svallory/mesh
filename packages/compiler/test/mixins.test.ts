@@ -144,6 +144,19 @@ describe("one report per mistake in a mixin's lines (R19)", () => {
     expect(warnings[0]!.slice(0, 2)).toEqual(["MESH_VALIDATE_NOT_APPLIED", "shared/audited.mesh.mx:7:35"]);
     expect(warnings[0]![2]).toStartWith("on a create, ");
   });
+  test("a mistake in a mixin's check that two includers both have, through different referrers, is one warning, unprefixed", () => {
+    // Invoice lists the check from two updates and Quote from one: each entity's referrers are kept apart, so the two
+    // includers agree, and the one report names neither.
+    const uses = (name: string) => `    update :${name}\n      validate\n        check &positive\n`;
+    const invoiceString = build({
+      "shared/audited.mesh.mx": 'mixin :Audited\n  checks\n    check :positive that=() => &amount * 2 > 0 code="p" message="p"\n',
+      "billing/invoice.mesh.mx": `${IMPORT}entity :Invoice\n  use mixin=Audited\n  attributes\n    uuid :id primary-key\n    string :amount\n  actions auto=[:read]\n${uses("pay")}${uses("refund")}`,
+      "billing/quote.mesh.mx": `${IMPORT}entity :Quote\n  use mixin=Audited\n  attributes\n    uuid :id primary-key\n    string :amount\n  actions auto=[:read]\n${uses("settle")}`,
+    });
+    expect(found(invoiceString).filter((d) => d[0] === "MESH_EXPR_PLAIN").map((d) => [...d.slice(0, 2), d[2]!.split(" runs as")[0]])).toEqual([
+      ["MESH_EXPR_PLAIN", "shared/audited.mesh.mx:3:31", "this expression"],
+    ]);
+  });
 });
 
 describe("a mixin's actions, policies and computed fields cover the includer (R13, R17, R18)", () => {
@@ -214,6 +227,11 @@ describe("a name the mixin shares (R14, R15, R25, R26; ruling D37 OD6: at the `u
     const ownCheck = build({ ...AUDITED_PROJECT, "billing/invoice.mesh.mx": invoice('  checks\n    check :createdBy that=() => true code="a" message="a"\n    update :x\n'.replace("    update :x\n", "")) });
     expect(report(ownCheck).filter((d) => d[0] === "MESH_DUPLICATE_MEMBER")).toEqual([["MESH_DUPLICATE_MEMBER", "billing/invoice.mesh.mx:3:2", "Duplicate member :createdBy: the mixin Audited declares it, and so does Invoice", "remove or rename the entity's own :createdBy, or stop using Audited"]]);
   });
+  test("a mixin policy and an entity policy of one name: at the `use` line", () => {
+    const result = build({ "shared/audited.mesh.mx": "mixin :Audited\n  policies\n    policy :anyone authorize-if=() => true\n",
+      "billing/invoice.mesh.mx": invoice("  policies\n    policy :anyone authorize-if=() => true\n") });
+    expect(report(result)).toEqual([["MESH_DUPLICATE_MEMBER", "billing/invoice.mesh.mx:3:2", "Duplicate member :anyone: the mixin Audited declares it, and so does Invoice", "remove or rename the entity's own :anyone, or stop using Audited"]]);
+  });
   test("with another mixin: at the later `use` line", () => {
     const result = build({ ...AUDITED_PROJECT, "shared/owned.mesh.mx": OWNED,
       "billing/invoice.mesh.mx": invoice("", "  use mixin=Audited\n  use mixin=Owned\n", `${IMPORT}import { Owned } from "../shared/owned.mesh.mx"\n`) });
@@ -231,6 +249,8 @@ describe("a name the mixin shares (R14, R15, R25, R26; ruling D37 OD6: at the `u
     expect(report(both)).toEqual([["MESH_DUPLICATE_MEMBER", "billing/invoice.mesh.mx:3:2", "Duplicate member :read: the mixin Audited generates it with auto=, and Invoice generates or declares it too", "remove :read from one of the two `auto=` lists"]]);
     const declared = build({ "shared/audited.mesh.mx": "mixin :Audited\n  actions auto=[:update]\n", "billing/invoice.mesh.mx": invoice("    update :update\n") });
     expect(report(declared)).toEqual([["MESH_DUPLICATE_MEMBER", "billing/invoice.mesh.mx:3:2", "Duplicate member :update: the mixin Audited generates it with auto=, and Invoice generates or declares it too", "rename the entity's own :update, or stop using Audited"]]);
+    const generated = build({ "shared/audited.mesh.mx": "mixin :Audited\n  actions\n    read :read\n", "billing/invoice.mesh.mx": invoice() });
+    expect(report(generated)).toEqual([["MESH_DUPLICATE_MEMBER", "billing/invoice.mesh.mx:3:2", "Duplicate member :read: the mixin Audited declares it, and Invoice generates it with auto=", "remove :read from the entity's `auto=` list, or stop using Audited"]]);
   });
   test("two members of one name inside one mixin are reported in its file, once for every includer (R25)", () => {
     const result = build({ "shared/audited.mesh.mx": "mixin :Audited\n  attributes\n    uuid :x\n    uuid :x\n", "billing/invoice.mesh.mx": invoice(),
@@ -283,8 +303,24 @@ describe("imports of a mixin (R9, R11, R12, R21, R22)", () => {
   test("a mixin's name read in a function is a free variable (R22), in the entity and in a mixin", () => {
     const result = build({ ...AUDITED_PROJECT, "billing/invoice.mesh.mx": invoice("  computed\n    string :label() { return String(Audited) }\n") });
     expect(errors(result).map((d) => d.slice(0, 2))).toEqual([["MESH_EXPR_FREE_VARIABLE", "billing/invoice.mesh.mx:9:36"]]);
-    const inside = build({ ...AUDITED_PROJECT, "shared/audited.mesh.mx": "mixin :Audited\n  computed\n    boolean :staff() { return isStaff() }\n" });
-    expect(errors(inside).map((d) => d.slice(0, 2))).toEqual([["MESH_EXPR_FREE_VARIABLE", "shared/audited.mesh.mx:3:30"]]);
+    // Two includers have the same mistake: one report, naming neither.
+    const inside = build({ ...AUDITED_PROJECT, "shared/audited.mesh.mx": "mixin :Audited\n  computed\n    boolean :staff() { return isStaff() }\n",
+      "billing/quote.mesh.mx": invoice().replace("entity :Invoice", "entity :Quote") });
+    expect(errors(inside).map((d) => [...d.slice(0, 2), d[2]!.split(" is not defined")[0]])).toEqual([["MESH_EXPR_FREE_VARIABLE", "shared/audited.mesh.mx:3:30", "`isStaff`"]]);
+  });
+});
+
+describe("a lock step in a mixin's `always` block (ADR-0100, design 5.6: a line in another file is cited by file)", () => {
+  const LOCKED = "mixin :Audited\n  actions\n    always types=[:update]\n      do\n        lock &version\n";
+  const lockProject = (body: string) => build({ "shared/audited.mesh.mx": LOCKED,
+    "billing/invoice.mesh.mx": invoice(body).replace("    decimal :amount min=0\n", "    integer :version default=1\n") });
+  test("a second lock in the includer's update cites the mixin's lines by file", () => {
+    expect(errors(lockProject("    update :pay\n      do\n        lock &version\n"))).toEqual([["MESH_LOCK_STEP", "billing/invoice.mesh.mx:10:8",
+      "update :pay of billing.Invoice has two `lock` steps (shared/audited.mesh.mx:5 through the `always` block at shared/audited.mesh.mx:3 and line 10): an action compares one version"]]);
+  });
+  test("a `set` of the locked member in the includer's update cites the mixin's lock by file", () => {
+    expect(errors(lockProject("    update :pay\n      do\n        set\n          &version=() => 3\n"))).toEqual([["MESH_LOCK_MEMBER", "billing/invoice.mesh.mx:11:10",
+      "`set &version` in update :pay of billing.Invoice writes the version that `lock &version` (shared/audited.mesh.mx:5) owns: the lock adds 1 on every write"]]);
   });
 });
 
@@ -319,5 +355,13 @@ describe("a concept line in a mixin (R29, ruling D37 OD12)", () => {
     expect(typeOf("Invoice", "price")).toBe("shared.Money");
     expect(typeOf("Invoice", "total")).toBe("billing.Money");
     expect(typeOf("Quote", "price")).toBe("shared.Money");
+  });
+  test("a mixin outside the domain root is the existing `MESH_UNKNOWN_ENTITY` at the import, and the `use` line adds nothing", () => {
+    const made = conceptProject({
+      "src/shared/audited.mesh.mx": AUDITED,
+      "src/domain/billing/invoice.mesh.mx": invoice("", "  use mixin=Audited\n", 'import { Audited } from "../../shared/audited.mesh.mx"\n'),
+    });
+    disposers.push(made.dispose);
+    expect(found(buildModel(made.project))).toEqual([["MESH_UNKNOWN_ENTITY", "src/domain/billing/invoice.mesh.mx:1:0", "../../shared/audited.mesh.mx exists but is not under the configured entity directories"]]);
   });
 });
