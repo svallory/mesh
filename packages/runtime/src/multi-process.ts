@@ -251,7 +251,8 @@ export class MultiClaim implements ClaimStrategy {
    * Take every lease this process may take (rule L2), one transaction per handler: a handler it registers, not held, not
    * waiting for a rename, not yielded under the union it has now, whose row names no holder, a lapsed or absent process
    * row, or this process's own run id. A take raises the row's generation by one. `only` limits it to one handler;
-   * `until` (a tick's) bounds each take's lock wait, and no take starts after it.
+   * `until` (a tick's) caps each take's lock wait at the time left until then, worked out when the take is issued, and no
+   * take starts after it.
    */
   async #takeLeases(only?: string, until?: number): Promise<void> {
     for (const name of this.#registered.keys()) {
@@ -304,7 +305,8 @@ export class MultiClaim implements ClaimStrategy {
    * that locks `mesh_outbox_state`, renew or rewrite the nil claim (a live claim of another run id loses the instance),
    * drop the leases no longer held, clear the yielded ones that still name this process, refresh the snapshots; then move
    * the renames that no live process blocks any more, and take the free leases. The next tick is scheduled once the
-   * renewal succeeded, not once the lease work ended, and that work waits for no lock past the next renewal's time.
+   * renewal succeeded, not once the lease work ended, so the lease work's lock waits no longer add to the renewal
+   * period; `#leases` says what bounds them and what does not.
    */
   async tick(): Promise<void> {
     const deliverer = this.deliverer;
@@ -350,8 +352,15 @@ export class MultiClaim implements ClaimStrategy {
   }
 
   /**
-   * The lease work of a tick (rules P5, L6, R7), each transaction waiting for a lock at most until `until`, when the
-   * next renewal is due, so that the renewal never queues behind it; what it could not do the next tick does.
+   * The lease work of a tick (rules P5, L6, R7); what it could not do the next tick does. `until` is when the next
+   * renewal is due. Each transaction gets `waitMs` = the time left until then, worked out when it is issued, and no
+   * rename or take starts once that time has passed. That is a cap on each transaction's lock wait, not a deadline:
+   * the layer counts `waitMs` from when the transaction reaches the front of its queue, not from when it was issued,
+   * and data-postgres applies it to each lock (`lock_timeout`), so a transaction that takes several locks
+   * (`#afterRenewal`, `#moveRenamed`) can wait several times over. The rounds' transactions, in the same queue, keep the
+   * layer's default wait. What keeps the instance is the renewal's own retry until the lapse, which has
+   * `lapseMs - renewMs` (10 s with the shipped numbers) to absorb the waits queued ahead of it (mesh-vaxr tracks
+   * bounding those).
    */
   async #leases(until: number): Promise<void> {
     const within = (): TransactionOptions => ({ waitMs: Math.max(1, until - Date.now()) });
