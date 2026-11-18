@@ -2,7 +2,7 @@
  * MX's diagnostic codes as Mesh's: `MESH_DIALECT.diagnosticCodes`. MX applies the map
  * to every diagnostic `lowerSource` and `checkDialectFile` report on an entity file (since MX 0.1.0-alpha.27), so the
  * build and the editor show the same `MESH_*` code for one mistake. Only the code changes: message, position and
- * severity stay MX's. A code a Mesh hook gives (`ctx.fail(message, { code: "MESH_X" })`) is never renamed.
+ * severity stay MX's. A code a Mesh hook gives (`ctx.report(message, { code: "MESH_X" })`) is never renamed.
  *
  * Every code in MX's catalogue (`MX_DIAGNOSTIC_CODES`) has an entry except the four in `MX_KEPT_CODES`, and the type
  * below fails the type check when MX adds a code the map leaves out (`test/diagnostic-codes.test.ts` fails too).
