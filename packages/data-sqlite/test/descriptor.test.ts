@@ -9,7 +9,9 @@ test("sqlite() is one frozen value: the data adapter descriptor and its data lay
   const options = { file: ":memory:" };
   const db = sqlite(options);
   const adapter: DataAdapter = db;
+  // A type check: the descriptor is a data layer too (every other test calls its transaction and close).
   const layer: DataLayer = db;
+  void layer;
   expect(adapter).toMatchObject({ kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", options });
   expect(Object.keys(db).sort()).toEqual(["build", "capabilities", "close", "database", "kind", "name", "options", "readOutbox", "refuseIfFailed", "transaction"]);
   // each :memory: layer is a database of its own, so each names it apart: core keeps a claim and a registry per name
@@ -17,8 +19,6 @@ test("sqlite() is one frozen value: the data adapter descriptor and its data lay
   expect(db.database).toMatch(/^:memory: #\d+$/);
   expect(other.database).toMatch(/^:memory: #\d+$/);
   expect(other.database).not.toBe(db.database);
-  expect(typeof layer.transaction).toBe("function");
-  expect(typeof layer.close).toBe("function");
   expect(Object.isFrozen(db)).toBe(true);
   expect(Object.isFrozen(db.options)).toBe(true);
   options.file = "changed.db";
