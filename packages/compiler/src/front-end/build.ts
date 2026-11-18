@@ -186,6 +186,8 @@ const MESHFW = "meshfw";
 function readImports(imports: readonly IrImport[]): {
   imports: ParsedImport[];
   problems: ImportProblem[];
+  /** The local names of the imports refused above: each binds nothing, and a reference through it reports nothing more. */
+  refused: string[];
 } {
   const result: ParsedImport[] = [];
   const problems: ImportProblem[] = [];
@@ -278,7 +280,9 @@ function readImports(imports: readonly IrImport[]): {
       namespace,
     });
   }
-  return { imports: result, problems };
+  const kept = new Set(result.map((entry) => entry.offset));
+  const refused = imports.filter((entry) => !kept.has(entry.span.sourceStart)).flatMap((entry) => (entry.names ?? []).map((name) => name.local));
+  return { imports: result, problems, refused };
 }
 const snakeCase = (name: string) =>
   name
@@ -882,6 +886,9 @@ export function fileImports(
       importNames.set(name, entry);
       bindings.push({ entry, index, name });
     }
+  // A name only a refused import binds (a package path, a form readImports refuses) binds nothing: the import is reported,
+  // and a use of the name (`use mixin=Timestamps` after `import { Timestamps } from "meshfw/mixins"`) reports nothing more (R9).
+  for (const name of parsed.refused) if (!importNames.has(name)) duplicates.add(name);
   return { imports, importNames, duplicates, bindings };
 }
 
