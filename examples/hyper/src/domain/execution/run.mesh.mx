@@ -46,25 +46,18 @@ entity :Run table="runs"
     update :cancel
       input
         string :reason min=1
-        integer :expectedVersion nullable
       validate
         check :cancelable [
           that=() => &state === :running
           code="run.cancelable"
           message="the run is not running"
         ]
-        check :versionMatches [
-          that=({ input }) => input.expectedVersion == null || input.expectedVersion === &version
-          code="expected-version"
-          message="the record is at another version; read it again and retry"
-          details=({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })
-        ]
       do
+        lock &version optional
         set
           &state=:canceled
           &endedAt=() => %.now
           &cancelReason=({ input }) => input.reason
-          &version=() => &version + 1
     update :settle
       input
         enum :result values=[:succeeded, :failed]

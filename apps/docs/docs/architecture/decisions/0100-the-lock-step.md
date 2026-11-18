@@ -39,7 +39,8 @@ Hyper and the user docs kept a version by hand: an `integer :version` attribute,
 
 - `lock` is a reserved tag of `meshfw`'s dialect manifest, the only breaking part of the change.
 - The model's `Step` union gains `{ kind: "lock", member, optional? }`; a project without a lock keeps its `model.json` and generated code byte for byte.
-- Hyper's Workspace, Collaborator, Membership, Machine, SessionReference and Attempt use `lock &version optional`; Task, Run, Claim, Submission, Review and Dependency keep the recipe (a conditional bump, a bump without an expected version, or another record's version).
+- Hyper's Workspace, Collaborator, Membership, Machine, SessionReference and Attempt use `lock &version optional`, and so does Run's `cancel`; Run's `settle`, which takes no expected version, keeps its own `set &version` bump, a legal neighbour since no lock reaches it. Task, Claim, Submission, Review and Dependency keep the recipe (a conditional bump, or another record's version).
+- On those entities a stale call is now reported alone, before the other rules, and its issue's message is the lock's ("the record changed since it was read: version is N, and the call expected M") instead of the recipe's; the code `expected-version` and the `details` are unchanged, so Hyper's `-32002` answer keeps its shape and only the `failures[].reason` text changes.
 - The user docs teach the lock and keep the recipe for a version compared among the rules.
 
 ## Action items

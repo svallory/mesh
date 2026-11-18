@@ -5947,6 +5947,25 @@
         {
           "do": [
             {
+              "kind": "lock",
+              "member": {
+                "name": "version",
+                "position": {
+                  "column": 13,
+                  "file": "src/domain/execution/run.mesh.mx",
+                  "line": 56,
+                  "offset": 1846
+                }
+              },
+              "optional": true,
+              "position": {
+                "column": 8,
+                "file": "src/domain/execution/run.mesh.mx",
+                "line": 56,
+                "offset": 1841
+              }
+            },
+            {
               "assignments": [
                 {
                   "member": {
@@ -5954,8 +5973,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 64,
-                      "offset": 2252
+                      "line": 58,
+                      "offset": 1886
                     }
                   },
                   "value": {
@@ -5968,8 +5987,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 65,
-                      "offset": 2279
+                      "line": 59,
+                      "offset": 1913
                     }
                   },
                   "value": {
@@ -5977,8 +5996,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 65,
-                      "offset": 2288
+                      "line": 59,
+                      "offset": 1922
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -5988,8 +6007,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 65,
-                        "offset": 2294
+                        "line": 59,
+                        "offset": 1928
                       }
                     }
                   }
@@ -6000,8 +6019,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 66,
-                      "offset": 2310
+                      "line": 60,
+                      "offset": 1944
                     }
                   },
                   "value": {
@@ -6011,8 +6030,8 @@
                     "position": {
                       "column": 24,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 66,
-                      "offset": 2324
+                      "line": 60,
+                      "offset": 1958
                     },
                     "source": "({ input }) => input.reason",
                     "tree": {
@@ -6024,80 +6043,16 @@
                         "position": {
                           "column": 39,
                           "file": "src/domain/execution/run.mesh.mx",
-                          "line": 66,
-                          "offset": 2339
+                          "line": 60,
+                          "offset": 1973
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 39,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 66,
-                        "offset": 2339
-                      }
-                    }
-                  }
-                },
-                {
-                  "member": {
-                    "name": "version",
-                    "position": {
-                      "column": 10,
-                      "file": "src/domain/execution/run.mesh.mx",
-                      "line": 67,
-                      "offset": 2362
-                    }
-                  },
-                  "value": {
-                    "params": [],
-                    "position": {
-                      "column": 19,
-                      "file": "src/domain/execution/run.mesh.mx",
-                      "line": 67,
-                      "offset": 2371
-                    },
-                    "source": "() => &version + 1",
-                    "tree": {
-                      "args": [
-                        {
-                          "kind": "member",
-                          "name": "version",
-                          "object": {
-                            "kind": "var",
-                            "name": "self",
-                            "position": {
-                              "column": 25,
-                              "file": "src/domain/execution/run.mesh.mx",
-                              "line": 67,
-                              "offset": 2377
-                            }
-                          },
-                          "optional": false,
-                          "position": {
-                            "column": 25,
-                            "file": "src/domain/execution/run.mesh.mx",
-                            "line": 67,
-                            "offset": 2377
-                          }
-                        },
-                        {
-                          "kind": "literal",
-                          "position": {
-                            "column": 36,
-                            "file": "src/domain/execution/run.mesh.mx",
-                            "line": 67,
-                            "offset": 2388
-                          },
-                          "value": 1
-                        }
-                      ],
-                      "fn": "add",
-                      "kind": "call",
-                      "position": {
-                        "column": 25,
-                        "file": "src/domain/execution/run.mesh.mx",
-                        "line": 67,
-                        "offset": 2377
+                        "line": 60,
+                        "offset": 1973
                       }
                     }
                   }
@@ -6107,8 +6062,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 63,
-                "offset": 2238
+                "line": 57,
+                "offset": 1872
               }
             }
           ],
@@ -6125,18 +6080,6 @@
                 "offset": 1634
               },
               "type": "string"
-            },
-            {
-              "kind": "argument",
-              "name": "expectedVersion",
-              "nullable": true,
-              "position": {
-                "column": 8,
-                "file": "src/domain/execution/run.mesh.mx",
-                "line": 49,
-                "offset": 1663
-              },
-              "type": "integer"
             }
           ],
           "kind": "update",
@@ -6155,16 +6098,16 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 51,
-                "offset": 1720
+                "line": 50,
+                "offset": 1678
               },
               "that": {
                 "params": [],
                 "position": {
                   "column": 15,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 52,
-                  "offset": 1755
+                  "line": 51,
+                  "offset": 1713
                 },
                 "source": "() => &state === :running",
                 "tree": {
@@ -6178,16 +6121,16 @@
                         "position": {
                           "column": 21,
                           "file": "src/domain/execution/run.mesh.mx",
-                          "line": 52,
-                          "offset": 1761
+                          "line": 51,
+                          "offset": 1719
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 21,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 52,
-                        "offset": 1761
+                        "line": 51,
+                        "offset": 1719
                       }
                     },
                     {
@@ -6195,8 +6138,8 @@
                       "position": {
                         "column": 32,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 52,
-                        "offset": 1772
+                        "line": 51,
+                        "offset": 1730
                       },
                       "value": "running"
                     }
@@ -6206,164 +6149,8 @@
                   "position": {
                     "column": 21,
                     "file": "src/domain/execution/run.mesh.mx",
-                    "line": 52,
-                    "offset": 1761
-                  }
-                }
-              }
-            },
-            {
-              "code": "expected-version",
-              "details": {
-                "params": [
-                  "input"
-                ],
-                "plain": {
-                  "detail": "an object literal",
-                  "edits": [
-                    {
-                      "from": 73,
-                      "member": "version",
-                      "text": "$self.version",
-                      "to": 81
-                    }
-                  ],
-                  "internal": {
-                    "self": "$self"
-                  },
-                  "position": {
-                    "column": 34,
-                    "file": "src/domain/execution/run.mesh.mx",
-                    "line": 60,
-                    "offset": 2142
-                  },
-                  "roots": [],
-                  "why": "unsupported-construct"
-                },
-                "position": {
-                  "column": 18,
-                  "file": "src/domain/execution/run.mesh.mx",
-                  "line": 60,
-                  "offset": 2126
-                },
-                "source": "({ input }) => ({ expectedVersion: input.expectedVersion, actualVersion: &version })"
-              },
-              "label": "versionMatches",
-              "message": "the record is at another version; read it again and retry",
-              "position": {
-                "column": 8,
-                "file": "src/domain/execution/run.mesh.mx",
-                "line": 56,
-                "offset": 1874
-              },
-              "that": {
-                "params": [
-                  "input"
-                ],
-                "position": {
-                  "column": 15,
-                  "file": "src/domain/execution/run.mesh.mx",
-                  "line": 57,
-                  "offset": 1913
-                },
-                "source": "({ input }) => input.expectedVersion == null || input.expectedVersion === &version",
-                "tree": {
-                  "args": [
-                    {
-                      "args": [
-                        {
-                          "kind": "member",
-                          "name": "expectedVersion",
-                          "object": {
-                            "kind": "var",
-                            "name": "input",
-                            "position": {
-                              "column": 30,
-                              "file": "src/domain/execution/run.mesh.mx",
-                              "line": 57,
-                              "offset": 1928
-                            }
-                          },
-                          "optional": false,
-                          "position": {
-                            "column": 30,
-                            "file": "src/domain/execution/run.mesh.mx",
-                            "line": 57,
-                            "offset": 1928
-                          }
-                        }
-                      ],
-                      "fn": "isNull",
-                      "kind": "call",
-                      "position": {
-                        "column": 30,
-                        "file": "src/domain/execution/run.mesh.mx",
-                        "line": 57,
-                        "offset": 1928
-                      }
-                    },
-                    {
-                      "args": [
-                        {
-                          "kind": "member",
-                          "name": "expectedVersion",
-                          "object": {
-                            "kind": "var",
-                            "name": "input",
-                            "position": {
-                              "column": 63,
-                              "file": "src/domain/execution/run.mesh.mx",
-                              "line": 57,
-                              "offset": 1961
-                            }
-                          },
-                          "optional": false,
-                          "position": {
-                            "column": 63,
-                            "file": "src/domain/execution/run.mesh.mx",
-                            "line": 57,
-                            "offset": 1961
-                          }
-                        },
-                        {
-                          "kind": "member",
-                          "name": "version",
-                          "object": {
-                            "kind": "var",
-                            "name": "self",
-                            "position": {
-                              "column": 89,
-                              "file": "src/domain/execution/run.mesh.mx",
-                              "line": 57,
-                              "offset": 1987
-                            }
-                          },
-                          "optional": false,
-                          "position": {
-                            "column": 89,
-                            "file": "src/domain/execution/run.mesh.mx",
-                            "line": 57,
-                            "offset": 1987
-                          }
-                        }
-                      ],
-                      "fn": "eq",
-                      "kind": "call",
-                      "position": {
-                        "column": 63,
-                        "file": "src/domain/execution/run.mesh.mx",
-                        "line": 57,
-                        "offset": 1961
-                      }
-                    }
-                  ],
-                  "fn": "or",
-                  "kind": "call",
-                  "position": {
-                    "column": 30,
-                    "file": "src/domain/execution/run.mesh.mx",
-                    "line": 57,
-                    "offset": 1928
+                    "line": 51,
+                    "offset": 1719
                   }
                 }
               }
@@ -6380,8 +6167,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 74,
-                      "offset": 2519
+                      "line": 67,
+                      "offset": 2115
                     }
                   },
                   "value": {
@@ -6391,8 +6178,8 @@
                     "position": {
                       "column": 17,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 74,
-                      "offset": 2526
+                      "line": 67,
+                      "offset": 2122
                     },
                     "source": "({ input }) => input.result",
                     "tree": {
@@ -6404,16 +6191,16 @@
                         "position": {
                           "column": 32,
                           "file": "src/domain/execution/run.mesh.mx",
-                          "line": 74,
-                          "offset": 2541
+                          "line": 67,
+                          "offset": 2137
                         }
                       },
                       "optional": false,
                       "position": {
                         "column": 32,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 74,
-                        "offset": 2541
+                        "line": 67,
+                        "offset": 2137
                       }
                     }
                   }
@@ -6424,8 +6211,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 75,
-                      "offset": 2564
+                      "line": 68,
+                      "offset": 2160
                     }
                   },
                   "value": {
@@ -6433,8 +6220,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 75,
-                      "offset": 2573
+                      "line": 68,
+                      "offset": 2169
                     },
                     "source": "() => %.now",
                     "tree": {
@@ -6444,8 +6231,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 75,
-                        "offset": 2579
+                        "line": 68,
+                        "offset": 2175
                       }
                     }
                   }
@@ -6456,8 +6243,8 @@
                     "position": {
                       "column": 10,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 76,
-                      "offset": 2595
+                      "line": 69,
+                      "offset": 2191
                     }
                   },
                   "value": {
@@ -6465,8 +6252,8 @@
                     "position": {
                       "column": 19,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 76,
-                      "offset": 2604
+                      "line": 69,
+                      "offset": 2200
                     },
                     "source": "() => &version + 1",
                     "tree": {
@@ -6480,16 +6267,16 @@
                             "position": {
                               "column": 25,
                               "file": "src/domain/execution/run.mesh.mx",
-                              "line": 76,
-                              "offset": 2610
+                              "line": 69,
+                              "offset": 2206
                             }
                           },
                           "optional": false,
                           "position": {
                             "column": 25,
                             "file": "src/domain/execution/run.mesh.mx",
-                            "line": 76,
-                            "offset": 2610
+                            "line": 69,
+                            "offset": 2206
                           }
                         },
                         {
@@ -6497,8 +6284,8 @@
                           "position": {
                             "column": 36,
                             "file": "src/domain/execution/run.mesh.mx",
-                            "line": 76,
-                            "offset": 2621
+                            "line": 69,
+                            "offset": 2217
                           },
                           "value": 1
                         }
@@ -6508,8 +6295,8 @@
                       "position": {
                         "column": 25,
                         "file": "src/domain/execution/run.mesh.mx",
-                        "line": 76,
-                        "offset": 2610
+                        "line": 69,
+                        "offset": 2206
                       }
                     }
                   }
@@ -6519,8 +6306,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 73,
-                "offset": 2505
+                "line": 66,
+                "offset": 2101
               }
             }
           ],
@@ -6532,8 +6319,8 @@
               "position": {
                 "column": 8,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 70,
-                "offset": 2429
+                "line": 63,
+                "offset": 2025
               },
               "type": "enum",
               "values": [
@@ -6552,8 +6339,8 @@
                 "position": {
                   "column": 8,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 71,
-                  "offset": 2479
+                  "line": 64,
+                  "offset": 2075
                 }
               }
             }
@@ -6563,8 +6350,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/run.mesh.mx",
-            "line": 68,
-            "offset": 2394
+            "line": 61,
+            "offset": 1990
           },
           "validate": []
         }
@@ -6808,8 +6595,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 79,
-                "offset": 2691
+                "line": 72,
+                "offset": 2287
               },
               "source": "({ actor, context }) => Mesh.isSystem(context) || actor.role != null",
               "tree": {
@@ -6822,8 +6609,8 @@
                         "position": {
                           "column": 57,
                           "file": "src/domain/execution/run.mesh.mx",
-                          "line": 79,
-                          "offset": 2729
+                          "line": 72,
+                          "offset": 2325
                         }
                       }
                     ],
@@ -6832,8 +6619,8 @@
                     "position": {
                       "column": 43,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 79,
-                      "offset": 2715
+                      "line": 72,
+                      "offset": 2311
                     }
                   },
                   {
@@ -6847,16 +6634,16 @@
                           "position": {
                             "column": 69,
                             "file": "src/domain/execution/run.mesh.mx",
-                            "line": 79,
-                            "offset": 2741
+                            "line": 72,
+                            "offset": 2337
                           }
                         },
                         "optional": false,
                         "position": {
                           "column": 69,
                           "file": "src/domain/execution/run.mesh.mx",
-                          "line": 79,
-                          "offset": 2741
+                          "line": 72,
+                          "offset": 2337
                         }
                       }
                     ],
@@ -6865,8 +6652,8 @@
                     "position": {
                       "column": 69,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 79,
-                      "offset": 2741
+                      "line": 72,
+                      "offset": 2337
                     }
                   }
                 ],
@@ -6875,8 +6662,8 @@
                 "position": {
                   "column": 43,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 79,
-                  "offset": 2715
+                  "line": 72,
+                  "offset": 2311
                 }
               }
             }
@@ -6886,8 +6673,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/run.mesh.mx",
-            "line": 78,
-            "offset": 2638
+            "line": 71,
+            "offset": 2234
           },
           "types": [
             "read"
@@ -6900,8 +6687,8 @@
               "position": {
                 "column": 30,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 80,
-                "offset": 2790
+                "line": 73,
+                "offset": 2386
               }
             },
             {
@@ -6909,8 +6696,8 @@
               "position": {
                 "column": 38,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 80,
-                "offset": 2798
+                "line": 73,
+                "offset": 2394
               }
             }
           ],
@@ -6934,8 +6721,8 @@
                 "position": {
                   "column": 19,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 81,
-                  "offset": 2826
+                  "line": 74,
+                  "offset": 2422
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -6943,8 +6730,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 81,
-                "offset": 2826
+                "line": 74,
+                "offset": 2422
               },
               "source": "async ({ actor, context }) => Mesh.isSystem(context) || await memberOf(actor.id)"
             }
@@ -6954,8 +6741,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/run.mesh.mx",
-            "line": 80,
-            "offset": 2764
+            "line": 73,
+            "offset": 2360
           }
         },
         {
@@ -6965,8 +6752,8 @@
               "position": {
                 "column": 35,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 82,
-                "offset": 2942
+                "line": 75,
+                "offset": 2538
               }
             },
             {
@@ -6974,8 +6761,8 @@
               "position": {
                 "column": 43,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 82,
-                "offset": 2950
+                "line": 75,
+                "offset": 2546
               }
             }
           ],
@@ -7010,8 +6797,8 @@
                 "position": {
                   "column": 19,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 83,
-                  "offset": 2978
+                  "line": 76,
+                  "offset": 2574
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -7019,8 +6806,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 83,
-                "offset": 2978
+                "line": 76,
+                "offset": 2574
               },
               "source": "async ({ actor, context }) => Mesh.isSystem(context) || await roleIn(actor.id, [:owner, :member])"
             }
@@ -7030,8 +6817,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/run.mesh.mx",
-            "line": 82,
-            "offset": 2911
+            "line": 75,
+            "offset": 2507
           }
         },
         {
@@ -7041,8 +6828,8 @@
               "position": {
                 "column": 33,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 84,
-                "offset": 3109
+                "line": 77,
+                "offset": 2705
               }
             }
           ],
@@ -7067,8 +6854,8 @@
                 "position": {
                   "column": 19,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 85,
-                  "offset": 3137
+                  "line": 78,
+                  "offset": 2733
                 },
                 "roots": [],
                 "why": "awaits-helper"
@@ -7076,8 +6863,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 85,
-                "offset": 3137
+                "line": 78,
+                "offset": 2733
               },
               "source": "async ({ self, actor, context }) => Mesh.isSystem(context) || await cancelsRunOf(self, actor.id)"
             }
@@ -7087,8 +6874,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/run.mesh.mx",
-            "line": 84,
-            "offset": 3080
+            "line": 77,
+            "offset": 2676
           }
         },
         {
@@ -7098,8 +6885,8 @@
               "position": {
                 "column": 30,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 86,
-                "offset": 3264
+                "line": 79,
+                "offset": 2860
               }
             }
           ],
@@ -7111,8 +6898,8 @@
               "position": {
                 "column": 19,
                 "file": "src/domain/execution/run.mesh.mx",
-                "line": 87,
-                "offset": 3292
+                "line": 80,
+                "offset": 2888
               },
               "source": "({ context }) => Mesh.isSystem(context)",
               "tree": {
@@ -7123,8 +6910,8 @@
                     "position": {
                       "column": 50,
                       "file": "src/domain/execution/run.mesh.mx",
-                      "line": 87,
-                      "offset": 3323
+                      "line": 80,
+                      "offset": 2919
                     }
                   }
                 ],
@@ -7133,8 +6920,8 @@
                 "position": {
                   "column": 36,
                   "file": "src/domain/execution/run.mesh.mx",
-                  "line": 87,
-                  "offset": 3309
+                  "line": 80,
+                  "offset": 2905
                 }
               }
             }
@@ -7144,8 +6931,8 @@
           "position": {
             "column": 4,
             "file": "src/domain/execution/run.mesh.mx",
-            "line": 86,
-            "offset": 3238
+            "line": 79,
+            "offset": 2834
           }
         }
       ],
