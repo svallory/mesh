@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { RESERVED_COMMAND_WORDS, buildEmitters, generateFiles, generatedImportDiagnostics, loadAdapterBuild, loadConfig, loadProject, loadTemplates, type ResolvedConfig } from "../src/index.ts";
+import { EmitError } from "../src/typescript/emit.ts";
+import { fakeGenerator } from "./fixtures/fake-adapter/build.ts";
 import { keyed } from "./v4.ts";
 
 const fakeAdapter = resolve(import.meta.dir, "fixtures/fake-adapter");
@@ -70,6 +72,26 @@ test("an adapter generator writing a core path is the existing ownership error",
   expect(diagnostics).toEqual([]);
   const { document } = await loadProject(config);
   await expect(generateFiles({ config, document: document! }, build)).rejects.toThrow('Emitters "model-json" and "clashing" both write ".mesh/model.json"');
+});
+
+test("an adapter generator producing a path that is not project-relative is MESH_EMIT_PATH at mesh.config.ts; a project-relative one is kept", async () => {
+  const config = await project("fake-mesh-adapter/build");
+  const { document } = await loadProject(config);
+  const producing = (path: string) => ({ generators: [{ ...fakeGenerator, name: "rogue", views: () => [{ path, view: { names: [] } }] }] });
+  for (const path of ["../escape.ts", "/abs/escape.ts", ".mesh/../../escape.ts"]) {
+    const error = await generateFiles({ config, document: document! }, producing(path)).then(() => undefined, (cause: unknown) => cause);
+    expect(error, path).toBeInstanceOf(EmitError);
+    expect((error as EmitError).diagnostic, path).toEqual({
+      severity: "error",
+      code: "MESH_EMIT_PATH",
+      message: `Emitter "rogue" produced the path "${path}", which is not a project-relative path`,
+      position: at,
+      fix: "Report this emitter bug: a generated path must be relative to the project root",
+    });
+  }
+  // The legal neighbour: a project-relative path, even outside the output directory, is the writer's to refuse, not this check's.
+  const files = await generateFiles({ config, document: document! }, producing("elsewhere/rogue.ts"));
+  expect(files.map((file) => file.path)).toContain("elsewhere/rogue.ts");
 });
 
 test("adapter generators' requires join the generated-import preflight", async () => {

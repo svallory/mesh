@@ -252,6 +252,25 @@ describe("names in one barrel", () => {
     });
   });
 
+  // A declaration (an event, a command) claims its barrel name like an entity: two kinds under one name are refused too.
+  test.each([
+    ["an event", { "billing/invoice.mesh.mx": entity("Invoice"), "billing/invoice-event.mesh.mx": "event :Invoice\n  uuid :invoiceId\n" }, "entity billing.Invoice and event billing.Invoice", "billing/invoice-event.mesh.mx"],
+    ["a command", { "billing/invoice.mesh.mx": entity("Invoice"), "billing/invoice-command.mesh.mx": "command :Invoice\n  uuid :invoiceId\n" }, "entity billing.Invoice and command billing.Invoice", "billing/invoice-command.mesh.mx"],
+    ["an event and a command", { "billing/a.mesh.mx": "event :Paid\n  uuid :invoiceId\n", "billing/b.mesh.mx": "command :Paid\n  uuid :invoiceId\n" }, "event billing.Paid and command billing.Paid", "billing/b.mesh.mx"],
+  ] as const)("%s named like another declaration of its module is MESH_EMIT_NAME naming both", async (_, files, both, file) => {
+    const name = both.split(".").at(-1);
+    expect(await failure(files)).toMatchObject({
+      code: "MESH_EMIT_NAME",
+      message: `${both} would both be exported as ${name} from #mesh/domain/billing`,
+      position: { file },
+    });
+  });
+
+  test("the legal neighbour: an event whose name differs from the entity's generates", async () => {
+    const files = { "billing/invoice.mesh.mx": entity("Invoice"), "billing/invoice-paid.mesh.mx": "event :InvoicePaid\n  uuid :invoiceId\n" };
+    await generateFiles({ document: documentOf(files), config: configOf("/project", ".mesh") });
+  });
+
   test("an entity and a subfolder of one name are MESH_EMIT_NAME naming the entity by FQN and the folder by path", async () => {
     expect(await failure({ "sales/billing.mesh.mx": entity("Billing"), "sales/Billing/invoice.mesh.mx": entity("Invoice") })).toMatchObject({
       code: "MESH_EMIT_NAME",
