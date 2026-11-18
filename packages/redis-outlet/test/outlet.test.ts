@@ -28,6 +28,9 @@ describe("redisOutlet's options", () => {
     ["an unknown option", { ...base, names: [] }, `redisOutlet has no option "names"; its options are url, stream, events, maxLength, after and onError`],
     ["no url", { ...base, url: undefined }, `redisOutlet: url is the Redis server to send to, such as "redis://localhost:6379", and is missing`],
     ["a url that is no URL, its text never printed", { ...base, url: "secret-password" }, `redisOutlet: url is the Redis server to send to, such as "redis://localhost:6379", and is not a URL`],
+    ["an http url, its text never printed", { ...base, url: "http://user:hunter2@localhost:6379" }, "redisOutlet: url is the Redis server to send to, such as \"redis://localhost:6379\", and is not a Redis URL: its scheme must be one of redis, rediss, valkey, valkeys, redis+tls, redis+unix, redis+tls+unix"],
+    ["a url with no scheme", { ...base, url: "localhost:6379" }, "redisOutlet: url is the Redis server to send to, such as \"redis://localhost:6379\", and is not a Redis URL: its scheme must be one of redis, rediss, valkey, valkeys, redis+tls, redis+unix, redis+tls+unix"],
+    ["a mailto url", { ...base, url: "mailto:x@y" }, "redisOutlet: url is the Redis server to send to, such as \"redis://localhost:6379\", and is not a Redis URL: its scheme must be one of redis, rediss, valkey, valkeys, redis+tls, redis+unix, redis+tls+unix"],
     ["a url that is no string", { ...base, url: 6379 }, `redisOutlet: url is the Redis server to send to, such as "redis://localhost:6379", and is 6379`],
     ["no stream", { ...base, stream: undefined }, `redisOutlet: stream is the key of the Redis stream to send to, such as "billing:events", and is missing`],
     ["a blank stream", { ...base, stream: " " }, `redisOutlet: stream is the key of the Redis stream to send to, such as "billing:events", and is " "`],
@@ -72,6 +75,13 @@ describe("redisOutlet's options", () => {
     expect((error as Error).message).not.toContain("hunter2");
     // Nothing was opened: the subscription row was never written.
     expect(await listSubscriptions(binding)).toEqual([]);
+  });
+
+  test("a Redis URL that Bun's client refuses when it is made is a FrameworkError too", async () => {
+    const { binding } = await freshBinding(project());
+    const error = await rejection(redisOutlet(binding, { ...base, url: "redis+unix://h" }));
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect((error as Error).message).toStartWith("redisOutlet: the Redis server at h did not answer: Expected unix socket path");
   });
 
   test("a value bind() did not make is refused", async () => {

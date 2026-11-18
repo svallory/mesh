@@ -564,7 +564,7 @@ await layer.close();
 
 | Option | What it is |
 |:--|:--|
-| `url` | The Redis server, such as `redis://localhost:6379`. Required: there is no default server. A message names only its host and port, never the URL, which may hold a password |
+| `url` | The Redis server, such as `redis://localhost:6379`, with a scheme Bun's Redis client takes: `redis`, `rediss`, `valkey`, `valkeys`, `redis+tls`, `redis+unix` or `redis+tls+unix`. Required: there is no default server. A message names only its host and port, never the URL, which may hold a password |
 | `stream` | The stream key. Required; it also names the subscription, `outlet:redis:<stream>` |
 | `events` | The FQNs of the events to send, a non-empty list; each must be an event the project declares (else a `FrameworkError` naming the nearest one) |
 | `maxLength` | About how many entries the stream keeps (`XADD ... MAXLEN ~`). Required: how long another system keeps your events is yours to choose |

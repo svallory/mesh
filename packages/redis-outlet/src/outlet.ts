@@ -30,6 +30,8 @@ export interface RedisOutlet {
   readonly done: Promise<Error | null>;
 }
 
+/** The schemes Bun's `RedisClient` takes; another one (`http:`, or `localhost:` in "localhost:6379") is a bad option. */
+const REDIS_SCHEMES = new Set(["redis:", "rediss:", "valkey:", "valkeys:", "redis+tls:", "redis+unix:", "redis+tls+unix:"]);
 const OPTION_NAMES = new Set(["url", "stream", "events", "maxLength", "after", "onError"]);
 /** The first wait before a Redis call is tried again, doubled after each failure up to `LAST_DELAY` (rule O5). */
 const FIRST_DELAY = 1_000;
@@ -73,6 +75,8 @@ function checked(options: RedisOutletOptions | undefined): Checked {
   // The value is never printed: a Redis URL may hold a password.
   if (typeof url !== "string" || !URL.canParse(url))
     throw new FrameworkError(`redisOutlet: url is the Redis server to send to, such as "redis://localhost:6379", and is ${typeof url === "string" ? "not a URL" : describe(url)}`);
+  if (!REDIS_SCHEMES.has(new URL(url).protocol))
+    throw new FrameworkError(`redisOutlet: url is the Redis server to send to, such as "redis://localhost:6379", and is not a Redis URL: its scheme must be one of ${[...REDIS_SCHEMES].map((scheme) => scheme.slice(0, -1)).join(", ")}`);
   if (stream === undefined) throw new FrameworkError(`redisOutlet: stream is the key of the Redis stream to send to, such as "billing:events", and is missing`);
   if (typeof stream !== "string" || stream.trim() === "")
     throw new FrameworkError(`redisOutlet: stream is the key of the Redis stream to send to, such as "billing:events", and is ${describe(stream)}`);
@@ -358,6 +362,20 @@ class Outlet {
   }
 }
 
+/** A client that answered PING. Every failure, Bun's refusal of the URL in the constructor included, is a `FrameworkError`. */
+async function connectedClient(url: string): Promise<RedisClient> {
+  let client: RedisClient | undefined;
+  try {
+    client = new RedisClient(url, { autoReconnect: false, enableOfflineQueue: false });
+    await client.connect();
+    await client.send("PING", []);
+    return client;
+  } catch (cause) {
+    client?.close();
+    throw new FrameworkError(`redisOutlet: the Redis server at ${serverOf(url)} did not answer: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+}
+
 /**
  * Open an outlet (rules O1 to O7): a subscription named `outlet:redis:<stream>` on `binding`, in its delivering
  * process, whose callback copies each row whose event is in `options.events` to the Redis stream `options.stream` as
@@ -368,14 +386,7 @@ class Outlet {
 export async function redisOutlet(binding: Binding, options: RedisOutletOptions): Promise<RedisOutlet> {
   const settings = checked(options);
   checkDeclared(binding, settings.events);
-  const client = new RedisClient(settings.url, { autoReconnect: false, enableOfflineQueue: false });
-  try {
-    await client.connect();
-    await client.send("PING", []);
-  } catch (cause) {
-    client.close();
-    throw new FrameworkError(`redisOutlet: the Redis server at ${serverOf(settings.url)} did not answer: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
-  }
+  const client = await connectedClient(settings.url);
   const outlet = new Outlet(binding, settings, client);
   try {
     await outlet.open(settings.after);
