@@ -1,5 +1,5 @@
 import { HANDLER_KIND, type BusCapability, type BusCore, type EventBus, type EventBusInstance, type Handler, type HandlerKind, type KindHandler, type Registration } from "./bus.ts";
-import type { DataLayer, DataOperations, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
+import type { ClaimRenewalOptions, DataLayer, DataOperations, DeliveryOperations, DeliveryState, FailureOperations, FailureRow, HandlerProgressRow, OutboxRow, SubscriptionProgressRow } from "./data-layer.ts";
 import { DECLARATION, type Declaration } from "./declarations.ts";
 import { forgetSubscription, listSubscriptions, markNoDeliver, retryFailed, setDeliveryTiming, subscribe, type Subscription } from "./deliverer.ts";
 import { bindDomain, type AsyncFrame, type Binding } from "./entity.ts";
@@ -203,7 +203,6 @@ async function rejection(run: () => Promise<unknown>): Promise<unknown> {
   return undefined;
 }
 const ops = (tx: DataOperations) => tx as DataOperations & DeliveryOperations;
-
 /** One database, its bindings and what their handlers saw. */
 interface World {
   readonly layer: DataLayer;
@@ -722,6 +721,159 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       const taken = await rejection(() => other.deliver());
       assert(taken instanceof DelivererTakenError && !taken.holder.thisProcess, `after a failed renewal another binding of this process was to see only the other process's claim, got ${String(taken)}`);
     });
+
+    if (!declares.has("multi-process")) {
+      /** `bus` with each instance's `onClaimLost` reported to `lost`. */
+      const watching = (bus: EventBus, lost: (error: Error) => void): EventBus => Object.freeze({
+        manifest: bus.manifest,
+        create: (core: BusCore, options: { readonly keep: "until-delivered" | "all" }) => { core.onClaimLost(lost); return bus.create(core, options); },
+      });
+      /** The claim's age by the database's clock. */
+      const claimAge = async (layer: DataLayer) => {
+        const state = await layer.transaction((tx) => ops(tx).readDeliveryState());
+        return state.claim === null ? Number.POSITIVE_INFINITY : state.now.getTime() - state.claim.renewedAt.getTime();
+      };
+
+      // mesh-yd0i: the layer's queue is held for twice the lapse, as an application's transaction waiting on another
+      // connection's locks holds it (the layer counts `waitMs` from the front of its queue, and on Postgres per lock).
+      // Through `transaction` the renewal waited behind it past the lapse. A layer with `renewClaim` renews outside the
+      // queue, so the claim stays renewed while everything else waits. The hold here is core's side of the queue (the
+      // adapter's own queue and its order with its transactions are `claimRenewalConformance`'s); a layer without the
+      // method (memory SQLite) has nothing to check here.
+      add("a claim renewal never waits behind the layer's other transactions: the queue held for twice the lapse loses nothing", async (world) => {
+        if (typeof world.layer.renewClaim !== "function") return;
+        setDeliveryTiming({ renewMs: 30, lapseMs: 400 });
+        let hold: Promise<void> | undefined;
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          transaction: (async (run, options) => {
+            while (hold) await hold;
+            return world.layer.transaction(run, options);
+          }) as DataLayer["transaction"],
+        });
+        let lost: unknown;
+        const binding = bindDomain(FULL, layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: world.recorder("h", [Alpha]) } } }) } }, world.frame);
+        await start(world, binding);
+        await sleep(100);
+        const ages: number[] = [];
+        hold = (async () => {
+          for (const end = Date.now() + 800; Date.now() < end;) {
+            // Read beside the held queue: the claim's age by the database's clock.
+            ages.push(await claimAge(world.layer));
+            await sleep(50);
+          }
+        })().finally(() => { hold = undefined; });
+        await hold;
+        assert(lost === undefined, `a queue held for twice the lapse lost the claim: ${String(lost)}`);
+        assert(ages.length > 0 && Math.max(...ages) < 400, `the claim stayed renewed while the queue was held, ages ${JSON.stringify(ages)}`);
+      });
+
+      // A renewal that never settles (a connection that stopped answering) is counted from when it was issued: once the
+      // claim has lapsed it is lost, instead of waiting on the renewal for good while another process may claim.
+      add("a claim renewal outside the queue still unsettled when the claim lapses loses the claim with MESH_DELIVERER_LOST", async (world) => {
+        setDeliveryTiming({ renewMs: 30, lapseMs: 300 });
+        let hanging = false;
+        let calls = 0;
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          renewClaim: (runId: string, generation: number, options: { readonly deadline: number }) => {
+            calls++;
+            if (hanging) return new Promise<boolean>(() => {});
+            return world.layer.renewClaim
+              ? world.layer.renewClaim(runId, generation, options)
+              : world.layer.transaction((tx) => ops(tx).renewClaim(runId, generation));
+          },
+        });
+        let lost: unknown;
+        const binding = bindDomain(FULL, layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: world.recorder("h", [Alpha]) } } }) } }, world.frame);
+        await start(world, binding);
+        await sleep(100);
+        assert(lost === undefined, `renewals that settle lost nothing, got ${String(lost)}`);
+        assert(calls > 0, "core renewed the claim through the layer's renewClaim");
+        hanging = true;
+        const started = Date.now();
+        await until(() => lost !== undefined, "the hanging renewal lost the claim", 3000);
+        const took = Date.now() - started;
+        const error = lost as unknown;
+        assert(error instanceof DelivererLostError && /renewal of the claim was still unsettled when the claim lapsed/.test(error.message), String(error));
+        assert(took < 300 + 30 + 500, `lost within the lapse and the grace, after ${took} ms`);
+      });
+
+      // The other side of mesh-yd0i: a transaction of this process that holds the claim's row (here a handler's, whose
+      // body runs inside it) past the lapse. No other process can take the claim while it holds the row, so the
+      // renewal waits for it and the deliverer stays, on every layer, as it did when the renewal went through the queue.
+      add("a handler transaction that holds the claim's row past the lapse loses nothing: no other process can take the claim meanwhile", async (world) => {
+        setDeliveryTiming({ renewMs: 30, lapseMs: 300 });
+        let lost: unknown;
+        let handled = false;
+        const slow = world.recorder("h", [Alpha], { run: async () => { await sleep(700); handled = true; } });
+        const binding = bindDomain(FULL, world.layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: slow } } }) } }, world.frame);
+        await start(world, binding);
+        await sleep(60);
+        await world.publish(binding, [Alpha, 1]);
+        await until(() => handled, "the slow handler finished", 5000);
+        await sleep(150);
+        assert(lost === undefined, `a handler transaction held past the lapse lost the claim: ${String(lost)}`);
+        const age = await claimAge(world.layer);
+        assert(age < 300, `the claim was renewed once the handler's transaction ended, age ${age} ms`);
+      });
+
+      // A renewal beside the layer's own transactions must not fail them: on Postgres at SERIALIZABLE a handler
+      // transaction whose FOR UPDATE on the state row waited for the renewal failed with 40001 once it committed, a
+      // retryable DatabaseBusyError that ended the round, about once per renewal under steady load.
+      add("a claim renewal fails none of the layer's own transactions: rounds under steady load with renewals every 30 ms see no DatabaseBusyError", async (world) => {
+        setDeliveryTiming({ renewMs: 30, lapseMs: 400 });
+        const busy: unknown[] = [];
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          transaction: (async (run, options) => {
+            try { return await world.layer.transaction(run, options); }
+            catch (error) { if (error instanceof DatabaseBusyError) busy.push(error); throw error; }
+          }) as DataLayer["transaction"],
+        });
+        let lost: unknown;
+        let handled = 0;
+        const handler = world.recorder("h", [Alpha], { run: async () => { await sleep(3); handled++; } });
+        const binding = bindDomain(FULL, layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: handler } } }) } }, world.frame);
+        await start(world, binding);
+        let n = 0;
+        for (const end = Date.now() + 800; Date.now() < end;) {
+          await world.publish(binding, [Alpha, ++n], [Alpha, ++n]);
+          await sleep(10);
+        }
+        await until(() => handled === n, `every one of the ${n} events was handled`, 10_000);
+        assert(lost === undefined, `the claim was lost under load: ${String(lost)}`);
+        assert(busy.length === 0, `${busy.length} transactions of the layer failed beside the renewal: ${busy.slice(0, 3).map(String).join("; ")}`);
+      });
+
+      // `release` waits for a renewal in flight (`Renewals.settled`): released beside it, the release could wait on the
+      // claim's row lock or fail and leave the claim to lapse instead of going at once.
+      add("stop() during a claim renewal outside the queue waits for it, then releases the claim at once", async (world) => {
+        if (typeof world.layer.renewClaim !== "function") return;
+        setDeliveryTiming({ renewMs: 30, lapseMs: 1000 });
+        let slow = false;
+        let pending: Promise<boolean> | undefined;
+        let settledAt = 0;
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          renewClaim: (runId: string, generation: number, options: ClaimRenewalOptions) => {
+            if (!slow) return world.layer.renewClaim!(runId, generation, options);
+            pending = sleep(300).then(() => world.layer.renewClaim!(runId, generation, options)).finally(() => { settledAt = Date.now(); });
+            return pending;
+          },
+        });
+        const binding = bindDomain(FULL, layer, { events: { bus: world.bus, keep: world.keep, load: async () => ({ handlers: { process: { h: world.recorder("h", [Alpha]) } } }) } }, world.frame);
+        const delivery = await binding.startDelivery();
+        await sleep(60);
+        slow = true;
+        await until(() => pending !== undefined, "a slow renewal was issued", 2000);
+        await delivery.stop();
+        const stoppedAt = Date.now();
+        assert(settledAt > 0 && settledAt <= stoppedAt, "stop() resolved before the renewal in flight settled");
+        const { state } = await world.state();
+        assert(state.claim === null, `stop() released the claim at once, found ${JSON.stringify(state.claim)}`);
+      });
+    }
 
     // ---- registration ----
 

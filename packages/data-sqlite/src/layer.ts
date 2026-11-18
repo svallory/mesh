@@ -2,11 +2,11 @@ import { Database } from "bun:sqlite";
 import { count, getTableName, max, sql } from "drizzle-orm";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
-import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { ClaimRowOrder, drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
+import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, MeshError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type ClaimRenewalOptions, type DataOperations, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { resolve } from "node:path";
 import { sqliteDialect } from "./dialect.ts";
-import { deliveryOperations, failureOperations, multiProcessOperations, renewProcessStatement } from "./delivery.ts";
+import { deliveryOperations, failureOperations, multiProcessOperations, renewClaimStatement, renewProcessStatement } from "./delivery.ts";
 import { appendEvent, deleteOutboxThrough, readOutbox } from "./outbox.ts";
 import { rawQuery } from "./raw-query.ts";
 
@@ -191,6 +191,13 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
   function busy<T>(statement: () => T): T {
     try { return statement(); } catch (cause) { throw reportBusy(cause, configured.file); }
   }
+  /**
+   * The order between `renewClaim` and this layer's transactions, each of which holds the one write lock the renewal
+   * needs (mesh-yd0i): `BEGIN IMMEDIATE` waits for a renewal in flight, and a renewal waits for the running transaction
+   * in the process, not in a busy retry, so the wait does not count toward the lapse and the queue's next transaction
+   * never takes the lock from under a polling renewal.
+   */
+  const claimOrder = new ClaimRowOrder();
   // One connection, opened on first use and kept until close(); a failed statement leaves the transaction usable, so
   // this driver never records one through `failed`.
   const queue = serialTransactions<BunSQLiteDatabase>({
@@ -199,8 +206,9 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       if (!db) await open(deadline);
       return db!;
     },
-    release() {},
+    release() { claimOrder.end(); },
     async begin(database, deadline) {
+      await claimOrder.take();
       await retryWhileBusy(configured.file, deadline, () => database.run(sql.raw("BEGIN IMMEDIATE")));
     },
     operations: (database, guard) => ({ ...drizzleOperations({
@@ -244,14 +252,15 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
     report: (cause, stage) => stage === "begin" ? connectionError("run BEGIN IMMEDIATE", configured.file, cause) : reportBusy(cause, configured.file),
   }, defaultWaitMs);
   /**
-   * The connection process-row renewals run on (`DataLayer.renewProcess`), a file database's only: opened on the first
-   * renewal and kept until close(). One renewal at a time; each is one autocommit statement, so it holds the write lock
-   * for that statement only. It waits for the lock (held by another connection's transaction, this layer's included)
-   * with the awaited retry `BEGIN IMMEDIATE` uses, until its deadline, and never behind this layer's queue.
+   * The connection renewals run on (`DataLayer.renewClaim` and `DataLayer.renewProcess`), a file database's only:
+   * opened on the first renewal and kept until close(). One renewal at a time; each is one autocommit statement, so it
+   * holds the write lock for that statement only. It waits for the lock (held by another connection's transaction, this
+   * layer's included) with the awaited retry `BEGIN IMMEDIATE` uses, until its deadline, and never behind this layer's
+   * queue.
    */
   let renewalConnection: Database | undefined;
   let renewing: Promise<unknown> = Promise.resolve();
-  const renewOnce = async (runId: string, lapseMs: number, deadline: number): Promise<boolean> => {
+  const renewOnce = async (statement: (conn: Database) => boolean, deadline: number): Promise<boolean> => {
     const started = performance.now();
     const within: Deadline = { started, at: started + Math.max(0, deadline - Date.now()) };
     if (!renewalConnection) {
@@ -259,7 +268,17 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
       catch (cause) { throw connectionError("open the renewal connection", configured.file, cause); }
     }
     const conn = renewalConnection;
-    return retryWhileBusy(configured.file, within, () => renewProcessStatement(conn, runId, lapseMs));
+    return retryWhileBusy(configured.file, within, () => statement(conn));
+  };
+  /** One renewal on the renewal connection; `turn` (the claim's: `ClaimRowOrder`) runs when its turn came and may move the deadline. */
+  const renewOutside = (method: string, statement: (conn: Database) => boolean, deadline: number, turn?: (deadline: number) => Promise<number>): Promise<boolean> => {
+    // Its own connection would wait for this transaction's write lock, which is held until the renewal gives up.
+    if (queue.insideTransaction()) {
+      return Promise.reject(new FrameworkError(`${method} cannot run inside a transaction of this layer: it renews on a connection of its own, which waits for the write lock this transaction holds`));
+    }
+    const run = renewing.then(async () => renewOnce(statement, turn ? await turn(deadline) : deadline));
+    renewing = run.catch(() => undefined);
+    return run;
   };
   const state: State = {
     exclusive: (run, waitOptions) => queue.exclusive(run, waitOptions),
@@ -281,13 +300,10 @@ export function sqliteWith(options: SQLiteOptions, tuning: Tuning): SQLiteLayer 
     },
     ...(configured.file === ":memory:" ? {} : {
       renewProcess(runId: string, lapseMs: number, options: { readonly deadline: number }): Promise<boolean> {
-        // Its own connection would wait for this transaction's write lock, which is held until the renewal gives up.
-        if (queue.insideTransaction()) {
-          return Promise.reject(new FrameworkError("renewProcess cannot run inside a transaction of this layer: it renews on a connection of its own, which waits for the write lock this transaction holds"));
-        }
-        const run = renewing.then(() => renewOnce(runId, lapseMs, options.deadline));
-        renewing = run.catch(() => undefined);
-        return run;
+        return renewOutside("renewProcess", (conn) => renewProcessStatement(conn, runId, lapseMs), options.deadline);
+      },
+      renewClaim(runId: string, generation: number, options: ClaimRenewalOptions): Promise<boolean> {
+        return claimOrder.renew((turn) => renewOutside("renewClaim", (conn) => renewClaimStatement(conn, runId, generation), options.deadline, turn), options.onHeld);
       },
     }),
     refuseIfFailed: () => queue.refuseIfFailed(),

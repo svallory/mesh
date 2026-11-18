@@ -69,6 +69,15 @@ function stateOf(row: StateRow): DeliveryState {
   };
 }
 
+/**
+ * `renewClaim`'s one statement, run at once on `db`: inside a transaction's operations, or alone in autocommit on the
+ * layer's renewal connection (`DataLayer.renewClaim`). A missing table is the `mesh db push` error; a busy failure is
+ * SQLite's own, for the caller to retry or report.
+ */
+export function renewClaimStatement(db: Database, runId: string, generation: number): boolean {
+  return withTables(() => db.query(`UPDATE ${OUTBOX_STATE_TABLE} SET renewed_at = ${NOW_MS} WHERE id = 1 AND run_id = ? AND generation = ?`).run(runId, generation).changes === 1);
+}
+
 export function deliveryOperations(client: () => Database, run: <T>(statement: () => T) => T): DeliveryOperations & RetentionOperations {
   const db = () => client();
   const exec = <T>(statement: () => T) => Promise.resolve().then(() => run(() => withTables(statement)));
@@ -82,8 +91,7 @@ export function deliveryOperations(client: () => Database, run: <T>(statement: (
            host = excluded.host, pid = excluded.pid, started_at = excluded.started_at`,
       ).run(claim.runId, claim.generation, claim.host === undefined ? hostname() : claim.host, claim.pid, claim.startedAt?.getTime() ?? null);
     }),
-    renewClaim: (runId, generation) => exec(() =>
-      db().query(`UPDATE ${OUTBOX_STATE_TABLE} SET renewed_at = ${NOW_MS} WHERE id = 1 AND run_id = ? AND generation = ?`).run(runId, generation).changes === 1),
+    renewClaim: (runId, generation) => exec(() => renewClaimStatement(db(), runId, generation)),
     releaseClaim: (runId, generation) => exec(() =>
       db().query(
         `UPDATE ${OUTBOX_STATE_TABLE} SET run_id = NULL, renewed_at = NULL, host = NULL, pid = NULL, started_at = NULL WHERE id = 1 AND run_id = ? AND generation = ?`,

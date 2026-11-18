@@ -5,7 +5,8 @@
 import { afterAll, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join } from "node:path";
-import { busConformance, testBus } from "@meshfw/runtime/testing";
+import { busConformance, claimRenewalConformance, testBus } from "@meshfw/runtime/testing";
+import type { PostgresLayer } from "../src/layer.ts";
 import { MULTI_CAPABILITIES, WAIT_MS, eventTables } from "./event-tables.ts";
 import { spawnWorker } from "./spawn-worker.ts";
 import { describeServer, testDatabase } from "./support.ts";
@@ -27,6 +28,19 @@ describeServer("bus conformance with testBus, Postgres", () => {
     expect(names.filter((name) => name.startsWith("[keep: until-delivered]")).length).toBe(names.length / 2);
     expect(names.some((name) => name.includes("subscribe:"))).toBe(true);
     expect(names.filter((name) => name.includes("dead letters:")).length).toBeGreaterThan(20);
+  });
+  for (const [name, check] of Object.entries(checks)) test(name, check, 60_000);
+});
+
+describeServer("renewClaim on Postgres, outside the layer's queue", () => {
+  const database = testDatabase(tables);
+  const bare = testDatabase({});
+  const checks = claimRenewalConformance(() => database.freshLayer(), {
+    bareLayer: () => bare.freshLayer(),
+    sibling: async (layer) => database.sibling(layer as PostgresLayer),
+  });
+  test("every check runs, the held-row and held-queue ones included", () => {
+    expect(Object.keys(checks).length).toBe(7);
   });
   for (const [name, check] of Object.entries(checks)) test(name, check, 60_000);
 });
