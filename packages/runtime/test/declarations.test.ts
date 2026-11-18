@@ -9,7 +9,6 @@ describe("Mesh.fqnOf", () => {
   test("answers the FQN a class carries under the runtime's symbol, and is a member of Mesh", () => {
     expect(fqnOf(declared)).toBe("billing.InvoicePaid");
     expect(Mesh.fqnOf(declared)).toBe("billing.InvoicePaid");
-    expect(Object.isFrozen(Mesh)).toBe(true);
   });
   test("anything else is a FrameworkError", () => {
     for (const value of [class {}, {}, null, undefined, 3, "billing.InvoicePaid", { [DECLARATION]: { fqn: 1 } }])

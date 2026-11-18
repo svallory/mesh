@@ -199,7 +199,8 @@ describe("the daemon's context factory", () => {
 
 describe("resolve", () => {
   test("only a UUID can name a stored row", () => {
-    expect(isId(crypto.randomUUID())).toBe(true);
+    // A version 7 UUID, the kind every stored key is (uuidv7).
+    expect(isId("0190a0a0-0000-7000-8000-000000000001")).toBe(true);
     expect(isId("nope")).toBe(false);
     expect(isId("")).toBe(false);
     expect(() => requireId("work.Task", "nope")).toThrow(NotFoundError);

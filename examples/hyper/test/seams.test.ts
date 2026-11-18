@@ -247,7 +247,7 @@ describe("acceptance 4: afterCommit runs once, after the commit, with every chan
         expect(rec.commits).toHaveLength(1);
         // The same rows afterWrite received, in the same order: before and after as plain data.
         expect(rec.commits[0]!.changes).toEqual(rec.writes.map(({ entity, action, before, after }) => ({ entity, action, before, after })));
-        expect(rec.commits[0]!.changes.map(shape)).toEqual(["work.Review#accept", "work.Submission#settle", "work.Task#touch", "work.Task#complete", "work.Completion#record"]);
+        // The order of those writes is pinned in acceptance 2 ("Review :accept is seen before ...").
         // After the commit: what the call changed is there to read, and afterCommit came after every afterWrite.
         expect(rec.log.at(-1)).toBe("afterCommit 5");
       });

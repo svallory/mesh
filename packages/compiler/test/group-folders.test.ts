@@ -67,7 +67,10 @@ test("the same name in a submodule and its parent is not a duplicate", () => {
 });
 test("two groups in the root module collide at the root", () => {
   const result = build({ [`${D}/_a/t.mesh.mx`]: entity("T"), [`${D}/_b/t.mesh.mx`]: entity("T") });
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0]).toMatchObject({ severity: "error", code: "MESH_DUPLICATE_ENTITY" });
   expect(result.diagnostics[0]!.message).toContain("Duplicate entity T;");
+  expect(result.diagnostics[0]!.message).toContain(`${D}/_a/t.mesh.mx`);
 });
 test("a segment that is only an underscore is an error with a clear message", () => {
   const result = build({ [`${D}/tasks/_/a.mesh.mx`]: entity("A") });

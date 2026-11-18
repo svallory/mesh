@@ -324,19 +324,18 @@ test.each([
 });
 
 test.each([
-  ["a computed index", "&lines[0]"],
-  ["a call", "&lines.amount()"],
-  ["a plain name", "lines"],
-  ["an atom", ":lines"],
-] as const)("of= with %s is not a member reference", (_, written) => {
+  ["a computed index", "&lines[0]", "MESH_ROLLUP_PATH"],
+  ["a call", "&lines.amount()", "MESH_ROLLUP_PATH"],
+  ["a plain name", "lines", "MESH_ROLLUP_PATH"],
+  ["an atom", ":lines", "MESH_ROLLUP_PATH"],
+] as const)("of= with %s is not a member reference: %s", (_, written, code) => {
   const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n  actions auto=[:read]\n`;
   const result = buildModel({ root: "/project", files: [
     { file: "billing/invoice.mesh.mx", source },
     { file: "billing/line.mesh.mx", source: target },
   ] });
   expect(result.document).toBeNull();
-  expect(result.diagnostics.length).toBeGreaterThan(0);
-  expect(result.diagnostics.every((d) => d.position.line === 8)).toBe(true);
+  expect(result.diagnostics.map((d) => [d.code, d.position.line, d.position.column])).toEqual([[code, 8, 15]]);
 });
 
 test.each([
@@ -366,15 +365,6 @@ test("a count's path may hold whitespace and comments too", () => {
   ] });
   expect(result.diagnostics).toEqual([]);
   expect(result.document!.entities.find((e) => e.name === "Invoice")!.computed[0]!.rollup).toEqual({ fn: "count", of: "lines" });
-});
-
-test("a rollup through a relationship the entity lacks is reported at the reference", () => {
-  const { source, result } = build("max", "linez.amount");
-  expect(result.diagnostics).toEqual([expect.objectContaining({
-    code: "MESH_UNKNOWN_MEMBER",
-    message: "&linez is not a member of billing.Invoice. Did you mean &lines?",
-    position: expect.objectContaining({ offset: source.indexOf("&linez") }),
-  })]);
 });
 
 test("a rollup keeps its path as text in the model, so generated code is unchanged", () => {

@@ -14,18 +14,19 @@ import { build, keyed } from "./v4.ts";
 // beside the control that proves the rename.
 describe("MX codes arrive as Mesh's", () => {
   test("no diagnostic MX reports for a Mesh source reaches the MESH_SYNTAX fallback", () => {
-    for (const source of ["entity :T\n  mystery\n", "let x\n", "entity :T\n  attributes\n    string :a min=\n", "entity\n"]) {
-      for (const d of parseEntitySource(source, "t.mesh.mx").diagnostics) expect(d.code, d.message).toBeString();
+    for (const [source, codes] of [
+      ["entity :T\n  mystery\n", ["MESH_UNKNOWN_TAG"]],
+      ["let x\n", ["MESH_UNKNOWN_TAG"]],
+      ["entity :T\n  attributes\n    string :a min=\n", ["MESH_PARSE_INVALID_OPTION_VALUE"]],
+      ["entity\n", ["MESH_MISSING_OPTION"]],
+    ] as const) {
+      expect(parseEntitySource(source, "t.mesh.mx").diagnostics.map((d) => d.code), source).toEqual([...codes]);
     }
   });
 });
 
-describe("a Mesh hook's own code is unchanged", () => {
-  test("MESH_UNSPACED_NAME from the dialect hook", () => {
-    const result = buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source: "entity:Todo\n" }] });
-    expect(result.diagnostics.map((d) => d.code)).toEqual(["MESH_UNSPACED_NAME"]);
-  });
-});
+// A Mesh hook's own code reaches the build unchanged: unspaced-name.test.ts pins MESH_UNSPACED_NAME with its message
+// and position.
 
 describe("meshDiagnostic", () => {
   const base = { severity: "error", message: "m", line: 3, column: 4, offset: 20 } as const;

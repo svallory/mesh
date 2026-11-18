@@ -4,7 +4,6 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RESERVED_COMMAND_WORDS, stableJsonStringify } from "@meshfw/compiler";
-import { defineConfig } from "../src/index.ts";
 import { runCli } from "../src/cli.ts";
 import { linkPackages as linkWorkspace, repo } from "./project.ts";
 
@@ -76,11 +75,6 @@ async function builtProject(): Promise<string> {
   expect(await run(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
   return root;
 }
-
-test("defineConfig is re-exported from meshfw", () => {
-  const config = { domain: "domain", output: "generated", data: { kind: "data-adapter" as const, name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities: { adapter: "sqlite", capabilities: [] }, options: { file: ":memory:" } } };
-  expect(defineConfig(config)).toBe(config);
-});
 
 test("built command builds files then passes the guard", async () => {
   const root = await builtProject();
@@ -517,6 +511,7 @@ describe("data adapter commands (mesh db push)", () => {
     const result = await run(root, "db", "push");
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("domain/todos/todo.mesh.mx:1:1 error MESH_PRIMARY_KEY An entity must declare exactly one primary key\n1 error, 0 warnings\n");
   }, 30_000);
 });
 

@@ -275,14 +275,11 @@ describe("type rules", () => {
     expect(new Function("$", "$s", `return ${code};`)(expr, scope({ self: {} }))).toBeNull();
   });
   test("integer by integer division truncates and warns; a float or decimal divides exactly (ruling of 14:00)", () => {
-    const base = entity("").replace("      validate\n", "").replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n");
-    const e = exprOf(entity(check("() => &n / 2 > 1")).replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n"));
-    expect(e.tree).toMatchObject({ fn: "gt", args: [{ fn: "idiv" }, {}] });
+    // The tree `&n / 2` lowers to (`idiv`) is pinned by the R2 test above; this one pins the warning and the float case.
     expect(codes(entity(check("() => &n / 2 > 1")))).toEqual(["warning:MESH_EXPR_INTEGER_DIVISION"]);
     const float = entity(check("() => &ratio / 2 > 1")).replace("    integer :m nullable\n", "    integer :m nullable\n    float :ratio default=1\n");
     expect(exprOf(float).tree).toMatchObject({ fn: "gt", args: [{ fn: "div" }, {}] });
     expect(codes(float)).toEqual([]);
-    void base;
   });
   test("an atom outside the enum's values is an error naming them", () => {
     const d = build(entity(check("() => &state === :wrong"))).diagnostics.find((x) => x.code === "MESH_EXPR_UNKNOWN_ATOM")!;
@@ -1562,7 +1559,7 @@ describe("%.now and %.today are the current transaction's instant and date", () 
 
   test("%.now and %.today are no attribute values: a default is a literal, and `x %.now` is no expression", () => {
     const attribute = (line: string) => entity(check("() => true")).replace("    json :meta\n", `    json :meta\n    ${line}\n`);
-    expect(build(attribute("timestamp :at default=%.now")).diagnostics.map((d) => d.code)).toEqual(["MESH_OPTION_VALUE"]);
+    // `default=%.now` is pinned in diagnostic-codes.test.ts, where the code's rename is proved.
     expect(build(attribute("date :on default=%.today")).diagnostics.map((d) => d.code)).toEqual(["MESH_OPTION_VALUE"]);
     expect(build(attribute("timestamp :at default=x %.now")).diagnostics.map((d) => d.code)).toEqual(["MESH_PARSE_EXPRESSION"]);
     // In a function too: `%.now` is an operand, never a modulo, and `%now` or `%` alone is no name.

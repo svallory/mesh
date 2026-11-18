@@ -248,7 +248,8 @@ test("the binary wrapper builds the project in a real process", async () => {
     const pay = await mesh(root, "explain", "billing.Invoice", "pay");
     expect(pay.code).toBe(0);
     expect(pay.stdout).toContain("  steps        set &paid = true\n");
-    expect(pay.stdout).toMatch(/  after write {2}self is the stored record\n {15}publish \(\) => new InvoicePaid\(\{ invoiceId: &id, .* \}\) \(plain, publish-step: it raises the event after the write\)\n/);
+    // The publish line's exact text: packages/compiler/test/events.test.ts. Here: the command prints a publish step after the write.
+    expect(pay.stdout).toMatch(/  after write {2}self is the stored record\n {15}publish /);
     // inside a `when`, the condition is read before the write and the publish runs after it
     const refund = await mesh(root, "explain", "billing.Invoice", "refund");
     expect(refund.stdout).toContain("when () => &paid (as it held before the write)\n");
@@ -644,7 +645,9 @@ describe("the outbox", () => {
   });
 
   test("readEvents with no binding in scope and none connected throws", async () => {
-    expect(await failure(app.readEvents())).toBeInstanceOf(FrameworkError);
+    const error = await failure(app.readEvents());
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect((error as FrameworkError).message).toStartWith("readEvents was called while not connected");
   });
 
   test("dispatch runs the action whose on= names the command's class, with the command's fields as its input", async () => {

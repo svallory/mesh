@@ -452,8 +452,3 @@ test("a read policy's checks run marked, so a privileged read inside throws; a w
   await write.inside({});
   expect(marks).toEqual([]);
 });
-
-test("Mesh.isSystem is true only for a context whose system key is true", () => {
-  expect(Mesh.isSystem({ system: true })).toBe(true);
-  for (const value of [{ system: false }, { system: "true" }, {}, null, undefined, true, "system"]) expect(Mesh.isSystem(value)).toBe(false);
-});

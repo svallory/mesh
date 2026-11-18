@@ -155,14 +155,12 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     expect([line, col]).toEqual([1, column]);
   });
 
-  test.each([
-    ["kind async :n(p) { b }\n", 11],
-    ["<x async :n<T>(p: T) { b }/>", 9],
-  ])("%j: an async method on `:name` is refused, at the `:name`", (source, column) => {
-    expect(firstError(source)).toEqual([
+  // The concise form inside an entity file, code and position: mesh-corpus.test.ts.
+  test("an async generic method on `:name` is refused, at the `:name`", () => {
+    expect(firstError("<x async :n<T>(p: T) { b }/>")).toEqual([
       "`async :n(…) { … }` is not supported: a `:name` method value cannot be async; remove `async`",
       1,
-      column,
+      9,
     ]);
   });
 });
@@ -177,8 +175,6 @@ describe("the rows", () => {
   test("the hooks that carry the atom contracts are all there", () => {
     expect(Object.keys(atomsHooks).sort()).toEqual(["afterLower", "checkContract", "contractFields", "describeAttribute", "lowerTrigger"]);
     expect(SYNTAX_DIALECT.contractFields).toEqual({ attribute: ["values", "pattern", "ref"], tag: ["declares"] });
-    expect(typeof SYNTAX_DIALECT.checkContract).toBe("function");
-    expect(typeof SYNTAX_DIALECT.afterLower).toBe("function");
-    expect(typeof SYNTAX_DIALECT.describeAttribute).toBe("function");
+    // What the hooks do: atom-contracts.test.ts.
   });
 });

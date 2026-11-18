@@ -139,6 +139,36 @@ describe("range comparisons follow the dialect's collation", () => {
     expect(q(call("eq", col("note"), val("m")), invoices, pg).sql).toBe('("invoices"."db_note" = ?)');
     expect(q(call("gt", col("total", 0, "integer"), val(3, "integer")), invoices, pg).sql).toBe('("invoices"."total" > ?)');
   });
+  // The class a computed operand has decides the collation (`classOfNode`): a string-valued call or subquery is
+  // collated, a number or a boolean never is (Postgres refuses `COLLATE` on a number, and a text compared without it
+  // sorts by the server's locale, not by code point).
+  test("a computed left side is collated by the class its node gives: calls, subqueries and quantifiers", () => {
+    const kinds: string[] = [];
+    const recording: ConditionSqlOptions = { ...options, dialect: { ...orderingDialect, collate: (key, kind) => { kinds.push(kind); return key; } } };
+    // The right side is a date, so a left side with no class shows as "date".
+    const classOf = (node: Condition) => { kinds.length = 0; q(call("lt", node, val(new Date(0), "date")), invoices, recording); return kinds[0]; };
+    const n = col("total", 0, "integer");
+    expect([
+      classOf(call("coalesce", col("note"), val("x"))),
+      classOf(call("coalesce", val(null, "date"), col("note"))),
+      classOf(call("cond", val(true, "boolean"), val("a"), val("b"))),
+      classOf(call("length", col("note"))),
+      classOf(call("idiv", n, val(2, "integer"))),
+      classOf(call("div", n, val(2, "integer"))),
+      classOf(call("add", n, val(1.5, "float"))),
+      classOf(call("add", n, val(1, "integer"))),
+      classOf(call("eq", col("note"), val("x"))),
+      classOf({ kind: "one", hop: toCustomer, value: col("name", 1) }),
+      classOf({ kind: "first", hop: toChildren, where: col("note", 1), value: col("total", 1, "integer") }),
+      classOf({ kind: "count", hop: toChildren }),
+      classOf({ kind: "some", hop: toChildren, where: col("note", 1) }),
+      classOf({ kind: "every", hop: toChildren, where: col("note", 1) }),
+    ]).toEqual(["string", "date", "string", "integer", "integer", "float", "float", "integer", "boolean", "string", "integer", "integer", "boolean", "boolean"]);
+    // Under the real ordering dialect, only the string-valued ones carry `collate "C"`.
+    expect(q(call("lt", call("coalesce", col("note"), val("x")), val("m")), invoices, { ...options, dialect: orderingDialect }).sql).toBe('(coalesce("invoices"."db_note", ?) collate "C" < ?)');
+    expect(q(call("lt", call("length", col("note")), val(3, "integer")), invoices, { ...options, dialect: orderingDialect }).sql).toBe('(length("invoices"."db_note") < ?)');
+  });
+
   test("SQLite's dialect has no collation, so its SQL is unchanged", () => {
     expect(q(call("lt", col("note"), val("m"))).sql).toBe('("invoices"."db_note" < ?)');
   });

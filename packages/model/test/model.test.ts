@@ -4,8 +4,8 @@ import { bareDocument, postDocument, postFile, throughDocument } from "./sample.
 import { positionOf } from "./source.ts";
 
 describe("v4 model", () => {
-  for (const document of [postDocument, bareDocument, throughDocument]) {
-    test("round trips as plain JSON, with absent properties omitted", () => {
+  for (const [name, document] of [["post", postDocument], ["bare", bareDocument], ["through", throughDocument]] as const) {
+    test(`the ${name} document round trips as plain JSON, with absent properties omitted`, () => {
       expect(findNonJsonValue(document)).toBeNull();
       expect(JSON.parse(JSON.stringify(document))).toStrictEqual(document);
     });

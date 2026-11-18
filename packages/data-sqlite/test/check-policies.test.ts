@@ -585,13 +585,8 @@ describe("where the call throws before its policies decide, the question throws 
     } finally { await world.db.close(); }
   });
 
-  test("a denial is never thrown: the question resolves with allowed false", async () => {
-    const world = await fresh();
-    try {
-      const answer = await outcome(world.binding.run(() => checkPolicies(domain.Doc.edit, { id: ids.plain, title: "x" }, bob)));
-      expect(answer.ok).toBe(true);
-    } finally { await world.db.close(); }
-  });
+  // A denial resolves (allowed false), never throws: compare() fails on a rejected question, and every denied() case
+  // above goes through it (bob's Doc.edit in "authorize-if and forbid-if on the row").
 });
 
 describe("reads: whether the read is allowed at all", () => {

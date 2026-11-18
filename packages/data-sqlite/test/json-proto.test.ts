@@ -248,12 +248,11 @@ describe("a json value keeps the key when it also holds what z.json() refused", 
     } finally { await db.close(); }
   });
 
-  test("a cycle passes the validator, as before, and the copy keeps it; the write then fails; shared references stay shared", async () => {
+  // A cycle passes the validator and the write then fails with a FrameworkError: json-null.test.ts ("rejects what JSON
+  // cannot hold, and stores nothing").
+  test("shared references stay shared in the copy the action holds", async () => {
     const { db, mesh } = await fresh();
     try {
-      const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
-      const failure = await rejection(mesh.makeDoc({ title: "c", payload: cyclic }));
-      expect(failure).not.toBeInstanceOf(InvalidInputError);
       // The row comes back from storage, through JSON, so sharing is checked on the copy the action holds: its input.
       const shared = { x: 1 };
       const seen: any[] = [];

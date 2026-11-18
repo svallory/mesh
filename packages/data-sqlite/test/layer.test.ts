@@ -392,9 +392,8 @@ test("a BEGIN that stays blocked fails with MESH_DATABASE_BUSY naming the file a
       busyFailure(second.transaction(async () => { calls++; })),
     ]);
     for (const error of failures) {
+      // The error's file and wait fields, and the bound on the wait: busy.test.ts ("a lock held past the wait ...").
       expect(error.code).toBe("MESH_DATABASE_BUSY");
-      expect(error.file).toBe(file);
-      expect(error.waitedMs).toBeGreaterThanOrEqual(100);
       expect(error.message).toContain(JSON.stringify(file));
       expect(error.message).toContain(`${error.waitedMs} ms`);
       expect(error.cause).toMatchObject({ cause: { code: "SQLITE_BUSY" } });

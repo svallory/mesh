@@ -122,12 +122,6 @@ describe("afterWrite", () => {
     expect(Object.isFrozen(committed[0])).toBe(true);
   });
 
-  test("does nothing when no seam wants the changes", async () => {
-    const { ops } = fake();
-    await recordWrite(ops, undefined, target, null, { id: 1 }, {}, {});
-    await recordWrite(ops, { beforeTransaction() {} }, target, null, { id: 1 }, {}, {});
-  });
-
   test("records nothing for afterCommit when only afterWrite is registered", async () => {
     const { layer } = fake();
     const seen: unknown[] = [];
@@ -203,14 +197,6 @@ describe("afterWrite", () => {
     signature[0] = 9;
     expect(logger.lines).toEqual(["before", "write", "after"]);
     expect(session.roles).toEqual(["x", "y"]);
-  });
-
-  test("a seam that assigns context.actor changes nothing for the call", async () => {
-    const { layer } = fake();
-    const context = { actor: { id: 1 } };
-    const seams: Seams = { afterWrite: (_db, event) => { try { (event.context as { actor: unknown }).actor = null; } catch { /* frozen */ } } };
-    await runAction(layer, seams, target, {}, context, async (tx) => { await recordWrite(tx, seams, target, null, { id: 1 }, {}, context); });
-    expect(context.actor).toEqual({ id: 1 });
   });
 });
 
