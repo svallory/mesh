@@ -42,6 +42,9 @@ export const PACKAGE_WEIGHTS: Readonly<Record<string, number>> = {
   "packages/data-postgres": 8,
   // Not measured on forge: its whole test script took about 1.2 s on the Mac (2026-11-17), one `mesh build` included.
   "packages/event-sourcing": 1.2,
+  // Not measured on forge: without MESH_TEST_REDIS_URL its server tests skip and it takes about a second, one `mesh
+  // build` included; with a server (CI's data group) about 12 s on the Mac against a Redis across the network.
+  "packages/redis-outlet": 4,
 };
 // Measured on forge on 2026-11-17 (each run under a 4 GiB cgroup scope, cgroup memory.peak): a model or a compiler
 // edit at four jobs peaked at 2.14 GiB at most (two jobs: 1.31 GiB), under the 3 GiB this budget allows inside

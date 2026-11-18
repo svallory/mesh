@@ -204,6 +204,21 @@
       "name": "@meshfw/model",
       "version": "0.0.0",
     },
+    "packages/redis-outlet": {
+      "name": "@meshfw/redis-outlet",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@meshfw/bus-local": "workspace:*",
+        "@meshfw/compiler": "workspace:*",
+        "@meshfw/data-sqlite": "workspace:*",
+        "@meshfw/model": "workspace:*",
+        "@meshfw/runtime": "workspace:*",
+        "meshfw": "workspace:*",
+      },
+      "peerDependencies": {
+        "@meshfw/runtime": "workspace:*",
+      },
+    },
     "packages/runtime": {
       "name": "@meshfw/runtime",
       "version": "0.0.0",
@@ -397,6 +412,8 @@
     "@meshfw/jsonrpc": ["@meshfw/jsonrpc@workspace:packages/jsonrpc"],
 
     "@meshfw/model": ["@meshfw/model@workspace:packages/model"],
+
+    "@meshfw/redis-outlet": ["@meshfw/redis-outlet@workspace:packages/redis-outlet"],
 
     "@meshfw/runtime": ["@meshfw/runtime@workspace:packages/runtime"],
 

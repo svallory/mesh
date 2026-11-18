@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, FAILURES_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
-  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, mergeHandlers, retryFailed, runAction, type EventRecord, type HandlerKind,
+  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, mergeHandlers, retryFailed, runAction, declaredEvents, type EventRecord, type HandlerKind,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { notifyPublished, onPublished } from "../src/events.ts";
@@ -334,6 +334,14 @@ describe("published() and readEvents through a binding", () => {
       memory.layer.transaction((tx) => publishEvent(tx, undefined, { ...target, key, entity }, event, {}, clock));
     return { ...memory, frame, binding, publish };
   };
+
+  test("declaredEvents lists the domain's event FQNs, sorted and frozen; a value bind() did not make is refused", () => {
+    const { binding } = setup();
+    expect(declaredEvents(binding)).toEqual(["billing.InvoicePaid", "billing.InvoiceVoided"]);
+    expect(Object.isFrozen(declaredEvents(binding))).toBe(true);
+    expect(declaredEvents(bindDomain({}, memoryLayer().layer, {}, new AsyncLocalStorage<unknown>()))).toEqual([]);
+    expect(() => declaredEvents({} as never)).toThrow(new FrameworkError("Not a binding made by bind()"));
+  });
 
   test("published() returns the transaction's own events in order, scoped to it, and throws outside one", async () => {
     const { frame, binding, publish } = setup();

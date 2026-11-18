@@ -1,0 +1,18 @@
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+
+entity :Invoice table="invoices"
+  attributes
+    uuid :id primary-key
+  actions
+    create :open
+      do
+        publish=() => new InvoiceDrafted({ invoiceId: &id })
+    update :pay
+      do
+        publish=() => new InvoicePaid({ invoiceId: &id, amount: 42, paidAt: %.now })
+  events
+    event :InvoiceDrafted
+      uuid :invoiceId
+  policies
+    policy :anyone types=[:create, :update]
+      authorize-if=() => true

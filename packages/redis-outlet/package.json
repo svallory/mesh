@@ -1,0 +1,29 @@
+{
+  "name": "@meshfw/redis-outlet",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "redisOutlet, a Mesh extension that copies the events a surface publishes to a Redis stream, for other applications to read",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@meshfw/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@meshfw/bus-local": "workspace:*",
+    "@meshfw/compiler": "workspace:*",
+    "@meshfw/data-sqlite": "workspace:*",
+    "@meshfw/model": "workspace:*",
+    "@meshfw/runtime": "workspace:*",
+    "meshfw": "workspace:*"
+  }
+}

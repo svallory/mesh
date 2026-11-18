@@ -46,6 +46,19 @@ export const handlers = {
 };
 `;
 
+/** The `mesh.config.ts` a sample in `src/` imports to bind with the project's own configuration. */
+const configModule = `import { localBus } from "@meshfw/bus-local";
+import { sqlite } from "@meshfw/data-sqlite";
+import { defineConfig } from "@meshfw/runtime";
+
+export default defineConfig({
+  domain: "src/domain",
+  output: ".mesh",
+  data: sqlite({ file: "app.db" }),
+  events: { bus: localBus(), keep: "until-delivered" },
+});
+`;
+
 const tsconfig = {
   compilerOptions: {
     strict: true,
@@ -70,6 +83,7 @@ const tsconfig = {
       "@meshfw/data-postgres": ["../../samples/mesh-api.d.ts"],
       "@meshfw/bus-local": ["../../samples/mesh-api.d.ts"],
       "@meshfw/event-sourcing": ["../../samples/mesh-api.d.ts"],
+      "@meshfw/redis-outlet": ["../../samples/mesh-api.d.ts"],
       "@meshfw/jsonrpc": ["../../samples/mesh-api.d.ts"],
       "meshfw": ["../../samples/mesh-api.d.ts"],
       // Every Mesh project depends on zod (its generated validators import it), so a sample may use it for its own
@@ -144,6 +158,12 @@ test("every TypeScript sample on the Docs pages type-checks against the proposed
         mkdirSync(join(caseDir, "src"), { recursive: true });
         writeFileSync(join(caseDir, "src/events.ts"), eventsModule);
         files.push("src/events.ts");
+      }
+      // A sample in `src/` that binds with the project's own config gets one at the project root, as it gets a context
+      // module; the page's own `mesh.config.ts` samples are checked on their own.
+      if (/from "\.\.\/mesh\.config\.ts"/.test(sample.code)) {
+        writeFileSync(join(caseDir, "mesh.config.ts"), configModule);
+        files.push("mesh.config.ts");
       }
       writeFileSync(join(caseDir, "tsconfig.json"), JSON.stringify({ ...tsconfig, files: [...files, "../../samples/mesh-api.d.ts"] }));
       let out = "";

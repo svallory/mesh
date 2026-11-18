@@ -538,6 +538,44 @@ Each subscription has a row in `mesh_subscription_progress` that stores its ackn
 
 The callback never runs inside a transaction, and an error ends only its own subscription. A subscription whose queue passes the bus's `maxQueue` (10 000 events by default), because its callback is slower than publishing, ends with `SubscriptionOverflowError` (`MESH_SUBSCRIPTION_OVERFLOW`), never with a skip; reopen it to resume from what it acknowledged.
 
+## Sending published events to Redis
+
+Another application that follows your events reads them from a broker, not from your database. `@meshfw/redis-outlet` is an extension that sends them to a [Redis stream](https://redis.io/docs/latest/develop/data-types/streams/): `redisOutlet(binding, options)` opens a [live subscription](#live-subscriptions) named `outlet:redis:<stream>` in the delivering process and copies each committed event whose name is in `events` to the stream, then acknowledges it. Only the events you list leave the application, so pass the `publishes` of a [surface](./surfaces.md#what-it-sends-out-publishes), the events that surface's audience may follow; every other row is acknowledged without being sent. The outlet takes a `Binding`, so the process binds its own layer and starts delivery with `startDelivery()` (`connect()` keeps its binding to itself). That makes this process the database's deliverer, the one that runs your handlers, so it must bind with the project's whole configuration, as `connect()` would: with `events: { bus }` alone, the handlers of your events module would not be registered and would become orphans, and a second process that calls `connect()` would get `DelivererTakenError`. Pass the config itself:
+
+```ts "src/outlet.ts"
+import { bind } from "#mesh";
+import { surface } from "#mesh/surfaces/public";
+import { redisOutlet } from "@meshfw/redis-outlet";
+import config from "../mesh.config.ts";
+
+const url = process.env.REDIS_URL;
+if (!url) throw new Error("REDIS_URL is not set: the Redis server the outlet sends to");
+
+// The project's own data layer, events (bus, load, keep, renamed) and seams: the same handlers connect() registers.
+const binding = bind(config.data, { events: config.events, seams: config.seams });
+const delivery = await binding.startDelivery();
+const outlet = await redisOutlet(binding, { url, stream: "public:events", events: surface.publishes, maxLength: 1_000_000 });
+// ... at shutdown
+await outlet.close();
+await delivery.stop();
+await config.data.close();
+```
+
+| Option | What it is |
+|:--|:--|
+| `url` | The Redis server, such as `redis://localhost:6379`, with a scheme Bun's Redis client takes: `redis`, `rediss`, `valkey`, `valkeys`, `redis+tls`, `redis+unix` or `redis+tls+unix`. Required: there is no default server. A message names only its host and port, never the URL, which may hold a password |
+| `stream` | The stream key. Required; it also names the subscription, `outlet:redis:<stream>` |
+| `events` | The FQNs of the events to send, a non-empty list; each must be an event the project declares (else a `FrameworkError` naming the nearest one) |
+| `maxLength` | About how many entries the stream keeps (`XADD ... MAXLEN ~`). Required: how long another system keeps your events is yours to choose |
+| `after` | Where a first open starts, as `subscribe`'s `after`; by default the highest position now. A reopen resumes from the acknowledged position |
+| `onError` | Called with each Redis error and with the reason the outlet stopped; without it they go to stderr |
+
+A bad option, an event the project does not declare and a server that does not answer `PING` reject the call with a `FrameworkError`. It resolves with `{ name, close(), done }`: `close()` ends the subscription (its row is kept) and closes the Redis client, and `done` resolves with `null` after `close()` or when delivery stops, else with the error that ended the outlet. Nothing outlives the handle: once closed, the outlet holds no client and no timer.
+
+Each event is one entry whose id is `<position>-0`, so entries are in the outbox's order, with these fields, all strings: `id` (the event's UUID, the same on every delivery), `name` (its FQN), `position`, `occurredAt` (ISO 8601), `causedBy` (empty when none), `entity`, `action`, `key` (JSON) and `payload` (the event's fields as JSON, dates as ISO 8601 text). The event's `metadata` is not sent: it can carry who made the call, which no surface declares as leaving. A reader follows the stream with `XREAD STREAMS public:events <last id>`.
+
+The outlet is a subscription, so it is at least once: an event is acknowledged only after Redis took it, and a process that stops between the two sends it again on its next start. Redis keeps it once anyway, since it refuses an id that is not above the stream's top one, and the outlet accepts that refusal only when the entry at that id is the same event. When it is not (the database was restored or recreated, or two applications send to one stream key), the outlet stops: `done` resolves with a `FrameworkError` saying so, nothing is acknowledged, and the fix is a new stream key. An event whose payload cannot be written as JSON (an `upcast` that returned a bigint, say) stops the outlet the same way, with a `FrameworkError` naming the event and its position, instead of being tried again. While Redis is away the outlet tries again, after 1 second and then twice as long each time up to 30 seconds, reporting each error to `onError`; the outbox keeps the rows meanwhile under `keep: "until-delivered"`. If the rows waiting pass the bus's `maxQueue`, the subscription ends with `SubscriptionOverflowError`, and the outlet opens it again under the same name once Redis answers `PING` (waiting first, longer each time, when the open before acknowledged nothing). Two outlets on one stream key in one process are a `FrameworkError`, as two subscriptions of one name are. When you retire an outlet, forget its row so it no longer holds outbox rows: `mesh events forget outlet:redis:<stream>`.
+
 ## How long rows are kept
 
 Under `keep: "until-delivered"`, the deliverer deletes the outbox rows that every reader has passed:

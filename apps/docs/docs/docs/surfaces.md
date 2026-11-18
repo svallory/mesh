@@ -69,6 +69,8 @@ const feed = await subscribe({ name: "public-feed", names: surface.publishes }, 
 await feed.close();
 ```
 
+To send them to another application through Redis, pass the same list as `events` to `redisOutlet` ([Sending published events to Redis](./events.md#sending-published-events-to-redis)).
+
 ## The generated manifest
 
 `mesh build` writes one file per surface, `.mesh/surfaces/<name>/index.ts`. Map it once in your `package.json`, beside the other specifiers:

@@ -19,7 +19,7 @@ test("every Mesh package that uses @meshfw/runtime takes it as a peer dependency
       return [m.dependencies, m.peerDependencies, m.devDependencies].some((fields) => fields?.["@meshfw/runtime"] !== undefined);
     })
     .sort();
-  expect(using).toEqual(["bus-local", "cli", "compiler", "data-drizzle", "data-postgres", "data-sqlite", "event-sourcing", "jsonrpc"]);
+  expect(using).toEqual(["bus-local", "cli", "compiler", "data-drizzle", "data-postgres", "data-sqlite", "event-sourcing", "jsonrpc", "redis-outlet"]);
   for (const name of using) {
     const pkg = manifest(join(repo, "packages", name));
     expect(pkg.dependencies?.["@meshfw/runtime"], name).toBeUndefined();

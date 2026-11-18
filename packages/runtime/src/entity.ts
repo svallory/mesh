@@ -964,6 +964,14 @@ export function bindingParts(binding: Binding): BindingParts {
 }
 
 /**
+ * The FQNs of the events `binding`'s domain declares, sorted and frozen: what a reader outside core, such as an outlet,
+ * checks the event names it is given against. A `FrameworkError` for a value `bind()` did not make.
+ */
+export function declaredEvents(binding: Binding): readonly string[] {
+  return Object.freeze([...stateOf(binding).events.keys()].sort());
+}
+
+/**
  * Run `fn`, a handler's body, on `binding` for the event `causedBy`: in a transaction of the binding (a `process`
  * handler) or with the binding in scope and no transaction (a `listen` handler). Every action it calls is nested in one
  * chain whose root is the handler (`label`), and every event those actions publish carries `causedBy`. With `quiet`,

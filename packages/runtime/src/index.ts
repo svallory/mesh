@@ -51,7 +51,7 @@ export { recordWrite, runAction, wantsChanges } from "./seams.ts";
 export { checkRead, defineSurface, project, type NarrowedFilter, type NarrowedSort, type Projected, type Surface, type SurfaceAction, type SurfaceActionKind, type SurfaceExposure, type SurfaceReadInput } from "./surface.ts";
 export { Mesh, type ActionFunction, type Decision, type MeshFunctions } from "./mesh.ts";
 export type { AfterCommitEvent, AfterWriteEvent, BeforeTransactionEvent, Change, SeamContext, SeamDb, SeamTarget, Seams } from "./seams.ts";
-export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, entity, isEntityValue, makeQuery, published, readEvents, releaseBinding, settled } from "./entity.ts";
+export { BIND, BIND_READS, ENTITY, NO_FRAME, bindDomain, bindingInScope, connectBinding, declaredEvents, entity, isEntityValue, makeQuery, published, readEvents, releaseBinding, settled } from "./entity.ts";
 export { KEEP_VALUES, keepEventsProblems, keepProblem, loadEvents, MAX_KEEP_DAYS, mergeHandlers, publishEvent, rows } from "./events.ts";
 export { renamedMap, renamedProblems, renamedShapeProblems, resolveEventName, storedToDeclared } from "./stored-names.ts";
 export type { EventNameResolution, RenamedProblem } from "./stored-names.ts";

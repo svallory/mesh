@@ -7,7 +7,7 @@ description: "Decision record 0099: an entity or aggregate file may hold one `ha
 
 ## Status
 
-Accepted (lead ruling D44, pending operator review). The `handlers` section is built: its syntax, checks and model came first, then the generated files and their registration. The Redis outlet (decision 6) is not built yet. Amends [ADR-0079](./0079-commands-events-and-the-outbox.md), whose amendment of 2026-10-17 says "handlers are registered in TypeScript": they may now also be declared in a `.mesh.mx` file.
+Accepted (lead ruling D44, pending operator review). The `handlers` section is built: its syntax, checks and model came first, then the generated files and their registration. The Redis outlet (decision 6) is built as `@meshfw/redis-outlet` ([Sending published events to Redis](../../docs/events.md#sending-published-events-to-redis)). Amends [ADR-0079](./0079-commands-events-and-the-outbox.md), whose amendment of 2026-10-17 says "handlers are registered in TypeScript": they may now also be declared in a `.mesh.mx` file.
 
 ## Date
 
@@ -35,4 +35,4 @@ The events specification placed handlers in a separate `handlers` section of the
 - A handler lives beside the entity whose actions it calls, and its key says where it is written; the events module stays the place for handlers that span the domain, for `metadata`, `context` and `upcast`.
 - Renaming or moving an entity changes its handlers' keys: each needs `renamed-from=` or starts from now, leaving the old rows as orphans (`mesh events forget`).
 - One more generator, `handlers` (`handlers.ts.jig`, `HandlersView`), which a project can override like the others.
-- The outlet, when built, needs no core change: retention, restart and ownership across processes are a subscription's.
+- The outlet needs one addition to core, `declaredEvents(binding)` in `@meshfw/runtime`, the FQNs a binding's domain declares, to check its `events` list; retention, restart and ownership across processes are a subscription's.
