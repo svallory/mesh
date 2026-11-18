@@ -1436,6 +1436,20 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         await (await subscribe(binding, { name: "s" }, () => {})).close();
       });
 
+      // Every mode (rule M5: connect({ deliver: false }) "refuses subscribe, as in single mode").
+      add("subscribe on a binding connected with { deliver: false }, or bound with no bus, is a FrameworkError, and writes no row", async (world) => {
+        const quiet = world.bind({});
+        markNoDeliver(quiet);
+        const noBus = bindDomain(FULL, world.layer, { events: { keep: world.keep, load: async () => ({}) } }, world.frame);
+        for (const binding of [quiet, noBus]) {
+          const error = await rejection(() => subscribe(binding, { name: "s" }, () => {}));
+          assert(error instanceof FrameworkError && error.message.startsWith("subscribe was called in a process that does not deliver (connected with { deliver: false }, or bound with no bus)"), `got ${String(error)}`);
+        }
+        assert((await world.state()).subscriptions.length === 0, "a refused open wrote a row");
+        // the same database opens the subscription from a binding that delivers
+        await (await subscribe(world.bind({}), { name: "s" }, () => {})).close();
+      });
+
       add("subscribe: an orphaned subscription is reported once, then at most hourly, under until-delivered only", async (world) => {
         setDeliveryTiming({ orphanReportMs: 60_000 });
         const binding = world.bind({});

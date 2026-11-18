@@ -439,7 +439,7 @@ describe("published() and readEvents through a binding", () => {
     expect((await rejection(() => readEvents(frame, undefined))).message).toContain("readEvents was called while not connected");
     const inside = await rejection(() => binding.transaction(() => readEvents(frame, undefined)));
     expect(inside).toBeInstanceOf(FrameworkError);
-    expect(inside.message).toContain("a transaction's own events come from published()");
+    expect(inside.message).toStartWith("readEvents was called inside a transaction: it reads committed rows only");
   });
 
   test("a row naming no declared event is MESH_EVENT_UNDECLARED, filtered or not; a name that is not declared is refused", async () => {
