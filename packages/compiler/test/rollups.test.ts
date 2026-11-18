@@ -454,3 +454,16 @@ entity :Invoice
     expect(result.diagnostics.map((d) => d.code)).toContain("MESH_VALIDATE_UNFILLED");
   });
 });
+
+test("a rollup whose path crosses into a file that did not build names the entity as not in the model, beside that file's error", () => {
+  const { source } = build("max", "lines.units");
+  const result = buildModel({ root: "/project", files: [
+    { file: "billing/invoice.mesh.mx", source },
+    { file: "billing/line.mesh.mx", source: target.replace("    integer :units\n", "    integer :units\n    mystery :x\n") },
+  ] });
+  expect(result.document).toBeNull();
+  expect(result.diagnostics.map((d) => [d.code, d.position.file, d.position.line, d.message])).toEqual([
+    ["MESH_UNKNOWN_ENTITY", "billing/invoice.mesh.mx", 9, "Imported entity Line is not in the model"],
+    ["MESH_UNKNOWN_TAG", "billing/line.mesh.mx", 7, "`mystery` is not a known tag in the `mesh` dialect"],
+  ]);
+});

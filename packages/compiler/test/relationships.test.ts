@@ -84,6 +84,13 @@ describe("a relationship to an unknown entity (acceptance 6)", () => {
     const result = build({ "post.mesh.mx": `import { User } from "./user"\nentity :Post\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :author entity=User\n` });
     expect(codes(result)).toContain("MESH_UNKNOWN_ENTITY");
   });
+
+  test("a has-many whose target's only belongs-to points at an unknown entity reports that error, not MESH_NO_INVERSE", () => {
+    // The unresolved belongs-to may have been meant to point back here; its own error is the one to fix.
+    const ghostly = `import { Ghost } from "./ghost.mesh.mx"\nentity :Membership\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :ghost entity=Ghost\n  actions auto=[:read]\n`;
+    const result = build({ "collaborator.mesh.mx": collaborator(), "membership.mesh.mx": ghostly });
+    expect(result.diagnostics.map((d) => [d.position.file, d.position.line, d.code])).toEqual([["app/membership.mesh.mx", 1, "MESH_UNKNOWN_IMPORT"]]);
+  });
 });
 
 // Membership with three belongs-to back to Collaborator, none named `collaborator`: the ladder cannot guess.

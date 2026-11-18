@@ -281,6 +281,8 @@ describe("MESH_PUBLISH_BEFORE_WRITE", () => {
     // a `load`, a plain `run` and a `when` (whose condition is read before the write) are such steps
     expect(warn(`        ${PUBLISH_PAID}\n        run (ctx) { return 1 }\n`).map((d) => d[4])).toEqual(["MESH_PUBLISH_BEFORE_WRITE"]);
     expect(warn(`        ${PUBLISH_PAID}\n        when=() => &paid\n          set\n            &paid=false\n`).map((d) => d[4])).toEqual(["MESH_PUBLISH_BEFORE_WRITE"]);
+    const loading = invoice(`    update :pay\n      do\n        ${PUBLISH_PAID}\n        load=[&n]\n`).replace("  actions auto", "  computed\n    integer :n() { return 1 }\n  actions auto");
+    expect(brief(build(loading).diagnostics).map((d) => [d[1], d[4]])).toEqual([[12, "MESH_PUBLISH_BEFORE_WRITE"]]);
   });
 
   test("one warning per such publish, inside a when too", () => {
