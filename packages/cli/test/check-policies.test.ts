@@ -150,6 +150,13 @@ afterAll(async () => {
 const OWNER = "({ actor }) => &list.ownerId === actor.id";
 
 describe("Mesh.checkPolicies and Mesh.can from application code", () => {
+  test("mesh explain reads the SQLite adapter's capabilities: List#destroy is one guarded delete", () => {
+    const explained = mesh(root, "explain", "todo.List", "destroy");
+    expect(explained.code).toBe(0);
+    const strategy = explained.stdout.split("\n").find((line) => line.startsWith("  strategy"));
+    expect(strategy?.replace(/^  strategy\s+/, "")).toStartWith("one delete by key with the policies in the statement: the checks that read the record (:ownerOnly)");
+  });
+
   test("tsc type-checks the generated tree and the application module under the strictest flags", async () => {
     const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(".mesh", name));
     const child = Bun.spawnSync([
