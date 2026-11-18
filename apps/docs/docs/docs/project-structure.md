@@ -56,6 +56,8 @@ An entity file holds exactly one entity and ends in `.mesh.mx`. Two entities in 
 
 Besides entity files, the domain folder holds event and command files ([Events](./events.md)), service files ([Services](./services.md)), aggregate files and the architecture file, below. Each has one root line, which declares one thing of its kind; an aggregate file may also declare events and commands in its sections, as an entity file may. A service file sits in the module folder of the entities it works on (`src/domain/todo/lists.mesh.mx`, `service :Lists`), belongs to that module (`todo.Lists`), and generates `.mesh/domain/todo/lists.service.ts` and `lists.inputs.ts`, exported from `#mesh/domain/todo` as the value `Lists` and its operations' input types; a folder that holds only a service still gets its barrel.
 
+A mixin file (`mixin :Audited`, [Mixins](./mixins.md)) may sit anywhere under the domain root, in a module folder or not, and belongs to no module: nothing is generated from it. Each entity that includes it with `use mixin=Audited` imports it by relative path, and its declarations become that entity's members.
+
 ### Aggregates
 
 An aggregate is a root entity and the entities it writes together with it, one consistency boundary. Its file names them; it declares no data of its own:
