@@ -214,6 +214,23 @@ describeServer("redisOutlet against Redis", () => {
     expect(await position(binding, outlet.name)).toBe(0);
   });
 
+  test("each XADD carries MAXLEN ~ <maxLength>, so the stream's length is bounded", async () => {
+    const proxy = redisProxy(redisUrl!);
+    try {
+      const { binding, paid } = await freshBinding(project());
+      const stream = key("maxlen");
+      const outlet = await redisOutlet(binding, { url: proxy.url, stream, events: [PAID], maxLength: 7 });
+      await paid();
+      await binding.deliver();
+      await until(async () => (await entries(client, stream)).length === 1, "the entry is in the stream");
+      await outlet.close();
+      const resp = (text: string) => `$${Buffer.byteLength(text)}\r\n${text}\r\n`;
+      expect(proxy.sent()).toContain(`${resp("XADD")}${resp(stream)}${resp("MAXLEN")}${resp("~")}${resp("7")}${resp("2-0")}`);
+    } finally {
+      proxy.stop();
+    }
+  });
+
   test("Redis away at a send: retried with back-off and reported, never acknowledged before, sent once it is back", async () => {
     const proxy = redisProxy(redisUrl!);
     try {
