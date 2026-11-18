@@ -52,7 +52,6 @@ describe("self-reference (acceptance 1)", () => {
     expect(entityOf(result, "Task").relationships[1]).toMatchObject({ inverse: "parent" });
   });
 
-
   test("a misspelt own name is an unknown entity at the entity option, with a suggestion", () => {
     const result = build({ "task.mesh.mx": task.replace("belongs-to :parent entity=Task", "belongs-to :parent entity=Tsak") });
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: "MESH_UNKNOWN_ENTITY", message: "Tsak is not an imported entity. Did you mean Task?", position: expect.objectContaining({ line: 5 }) })]);

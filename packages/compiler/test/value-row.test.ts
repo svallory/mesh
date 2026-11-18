@@ -40,8 +40,8 @@ describe("the atom value row", () => {
 });
 
 describe("a claimed default value ends at a terminating attribute row", () => {
-  // `fixtures/mesh-corpus/entities/.../negative/old-relationship.mesh.mx`.
-  const source = "entity :Todo\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to=:List :list\n";
+  // The negative fixture itself, so its message and position are pinned here (contracts.test.ts's matrix pins its code).
+  const source = readFileSync(join(import.meta.dir, "fixtures/negative/old-relationship.mesh.mx"), "utf8");
 
   test("`belongs-to=:List :list` is the default `:List` and the name `:list`", () => {
     expect(meshDiagnostics(source, MESH_DIALECT)).toEqual([["`belongs-to`: unknown option `value`", 5, 14]]);

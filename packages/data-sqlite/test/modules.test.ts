@@ -247,6 +247,7 @@ describe("the specifiers", () => {
       "context.ts", "app.ts", "check.ts", ...generated,
     ], { cwd: dir });
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
+    expect(child.exitCode).toBe(0);
   }, 30_000);
 });
 

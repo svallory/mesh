@@ -111,8 +111,8 @@ describe("v4 contracts", () => {
       ["MESH_OPTION_VALUE", "`actions`: option `auto` must be array, got atom; write it as a list: `[:read]`"],
     ]);
   });
-  // old-relationship's message and position: value-row.test.ts ("a claimed default value ends at a terminating attribute
-  // row"); its code: the matrix below.
+  // old-relationship's message and position, read from the fixture file: value-row.test.ts ("a claimed default value ends
+  // at a terminating attribute row"); its code and position: the matrix below.
   test("every negative fixture fails with a positioned diagnostic", () => {
     const files = readdirSync(`${fixtureDir}negative`).filter((f) =>
       f.endsWith(".mesh.mx"),

@@ -327,7 +327,7 @@ test.each([
   ["a computed index", "&lines[0]", "MESH_ROLLUP_PATH"],
   ["a call", "&lines.amount()", "MESH_ROLLUP_PATH"],
   ["a plain name", "lines", "MESH_ROLLUP_PATH"],
-  ["an atom", ":lines", "MESH_ROLLUP_PATH_STRING"],
+  ["an atom", ":lines", "MESH_ROLLUP_PATH"],
 ] as const)("of= with %s is not a member reference: %s", (_, written, code) => {
   const source = `import { Line } from "./line.mesh.mx"\nentity :Invoice\n  attributes\n    uuid :id primary-key\n  relationships\n    has-many :lines entity=Line\n  computed\n    max :value of=${written}\n  actions auto=[:read]\n`;
   const result = buildModel({ root: "/project", files: [

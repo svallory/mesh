@@ -743,9 +743,12 @@ for (const kind of ROLLUPS)
         const a = get(call, "of");
         if (!a) continue;
         const literal = node(a);
-        // An atom is one of the expression's `mesh:Atom` nodes, found by its forward (`Expr.nodes`).
-        const atom = (a.kind === "dynamic" || a.kind === "bound") && (a.value.nodes ?? []).some((each) => each.forward === literal);
-        const written = a.kind === "static" ? a.value : literal?.type === "StringLiteral" && !atom ? String(literal.value) : undefined;
+        // An atom is no string: a bare one (`of=:lines`) arrives static with its `mesh:Atom` node; one inside an expression
+        // is one of the expression's `mesh:Atom` nodes, found by its forward (`Expr.nodes`). Either is MESH_ROLLUP_PATH.
+        const atom = a.kind === "static"
+          ? a.node?.type === "mesh:Atom"
+          : (a.kind === "dynamic" || a.kind === "bound") && (a.value.nodes ?? []).some((each) => each.forward === literal);
+        const written = atom ? undefined : a.kind === "static" ? a.value : literal?.type === "StringLiteral" ? String(literal.value) : undefined;
         if (written !== undefined) {
           const path = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(written) ? written : undefined;
           ctx.report(

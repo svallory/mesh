@@ -155,14 +155,12 @@ describe("what the atom rows refuse, in Mesh's words", () => {
     expect([line, col]).toEqual([1, column]);
   });
 
-  test.each([
-    // The concise form inside an entity file, code and position: mesh-corpus.test.ts.
-    ["<x async :n<T>(p: T) { b }/>", 9],
-  ])("%j: an async method on `:name` is refused, at the `:name`", (source, column) => {
-    expect(firstError(source)).toEqual([
+  // The concise form inside an entity file, code and position: mesh-corpus.test.ts.
+  test("an async generic method on `:name` is refused, at the `:name`", () => {
+    expect(firstError("<x async :n<T>(p: T) { b }/>")).toEqual([
       "`async :n(…) { … }` is not supported: a `:name` method value cannot be async; remove `async`",
       1,
-      column,
+      9,
     ]);
   });
 });

@@ -248,8 +248,8 @@ test("the binary wrapper builds the project in a real process", async () => {
     const pay = await mesh(root, "explain", "billing.Invoice", "pay");
     expect(pay.code).toBe(0);
     expect(pay.stdout).toContain("  steps        set &paid = true\n");
-    // The publish line's exact text: packages/compiler/test/events.test.ts. Here: the command prints it after the write.
-    expect(pay.stdout).toContain("  after write  self is the stored record\n");
+    // The publish line's exact text: packages/compiler/test/events.test.ts. Here: the command prints a publish step after the write.
+    expect(pay.stdout).toMatch(/  after write {2}self is the stored record\n {15}publish /);
     // inside a `when`, the condition is read before the write and the publish runs after it
     const refund = await mesh(root, "explain", "billing.Invoice", "refund");
     expect(refund.stdout).toContain("when () => &paid (as it held before the write)\n");
