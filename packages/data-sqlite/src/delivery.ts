@@ -198,12 +198,6 @@ const leaseOf = (row: LeaseColumns): HandlerLeaseRow => Object.freeze({
 });
 
 /**
- * The delivery operations of multi mode on SQLite (`MultiProcessOperations`): the process rows, the leases on the
- * progress rows, the subscription owners and the recorded `keep`. SQLite has one writer, and the `BEGIN IMMEDIATE`
- * transaction holds it from the start, so every `lock*` is a plain read. Only a project whose bus declares
- * `multi-process` calls them, so a single-mode schema without the table and columns never meets them.
- */
-/**
  * `renewProcess`'s one statement, run at once on `db`: inside a transaction's operations, or alone in autocommit on the
  * layer's renewal connection (`DataLayer.renewProcess`). A missing table is the `mesh db push` error; a busy failure is
  * SQLite's own, for the caller to retry or report.
@@ -212,6 +206,12 @@ export function renewProcessStatement(db: Database, runId: string, lapseMs: numb
   return withMultiTables(() => db.query(`UPDATE ${DELIVERY_PROCESS_TABLE} SET renewed_at = ${NOW_MS} WHERE run_id = ? AND ${NOW_MS} - renewed_at < ?`).run(runId, lapseMs).changes === 1);
 }
 
+/**
+ * The delivery operations of multi mode on SQLite (`MultiProcessOperations`): the process rows, the leases on the
+ * progress rows, the subscription owners and the recorded `keep`. SQLite has one writer, and the `BEGIN IMMEDIATE`
+ * transaction holds it from the start, so every `lock*` is a plain read. Only a project whose bus declares
+ * `multi-process` calls them, so a single-mode schema without the table and columns never meets them.
+ */
 export function multiProcessOperations(client: () => Database, run: <T>(statement: () => T) => T): MultiProcessOperations {
   const db = () => client();
   const exec = <T>(statement: () => T) => Promise.resolve().then(() => run(() => withMultiTables(statement)));

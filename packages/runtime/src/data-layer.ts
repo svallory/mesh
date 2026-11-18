@@ -665,7 +665,9 @@ export interface DataLayer {
    * transaction's). Core renews a multi-mode process row through it when the layer has it, with the time the row
    * lapses as the deadline; without it, through `transaction`, where the renewal waits behind whatever is queued ahead
    * of it and can come after the lapse. data-postgres has it; data-sqlite has it for a file database, where the
-   * renewal still waits for the one write lock (SQLite has a single writer), but not behind this layer's queue.
+   * renewal still waits for the one write lock (SQLite has a single writer), but not behind this layer's queue. It
+   * settles soon after `deadline` even when its connection stops answering (the adapter then gives the statement up and
+   * drops that connection), so neither `close()` nor a later renewal waits on it for good.
    */
   renewProcess?(runId: string, lapseMs: number, options: { readonly deadline: number }): Promise<boolean>;
   /** Release the adapter's connection and other owned handles. Rejects while

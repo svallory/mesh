@@ -3,7 +3,7 @@ import { count, getTableColumns, getTableName, is, max, sql, SQL as DrizzleSQL, 
 import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
 import { PgJsonb, PgTable, type PgColumn } from "drizzle-orm/pg-core";
 import { drizzleOperations, drizzleTable, serialTransactions, type Deadline } from "@meshfw/data-drizzle";
-import { CORE_TABLE_NAMES, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
+import { CORE_TABLE_NAMES, DatabaseBusyError, FrameworkError, defineCapabilities, type CapabilityManifest, type DataAdapter, type DataLayer, type DataOperations, type Filter, type OutboxOperations, type Row, type TableHandle, type TransactionOptions } from "@meshfw/runtime";
 import { deliveryOperations, failureOperations, multiProcessOperations } from "./delivery.ts";
 import { postgresDialect } from "./dialect.ts";
 import { mapPostgresError, type Stage } from "./errors.ts";
@@ -81,6 +81,14 @@ export interface Tuning {
 
 /** The wait for any one lock, in milliseconds. Below the 15 s claim lapse of the events spec. */
 const DEFAULT_WAIT_MS = 5000;
+
+/**
+ * How long past its deadline a renewal (`renewProcess`) may run before the layer gives it up: `lock_timeout` ends a
+ * lock wait at the deadline, but nothing bounds a statement on a connection that stopped answering (a network stall, a
+ * hung server; Bun.SQL has no query timeout). Given up, the renewal rejects and its connection is closed, so close()
+ * and the next renewal (on a new connection) do not wait on it. Core gives the renewal up 50 ms past the lapse.
+ */
+const RENEW_ABANDON_MS = 250;
 
 /** A connection a job runs on, and whether it must be closed instead of returned to the pool. */
 interface Connection {
@@ -330,11 +338,22 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
    * The connection process-row renewals run on (`DataLayer.renewProcess`), outside the transaction queue: reserved on
    * the first renewal and kept until close() or until it breaks. One renewal at a time, each one autocommit `UPDATE` at
    * the server's default isolation after a `SET lock_timeout` to the time left before its deadline, so the only wait
-   * it can meet is a lock on its own row (a release, or a peer deleting the row once it lapsed).
+   * it can meet is a lock on its own row (a release, or a peer deleting the row once it lapsed). A renewal still running
+   * `RENEW_ABANDON_MS` past its deadline is given up (`abandonRenewal`): `renewals` counts the renewals given up, so the
+   * given-up one, should it ever go on, never installs or keeps a connection.
    */
   let renewConnection: ReservedSQL | undefined;
   let renewing: Promise<unknown> = Promise.resolve();
+  let renewals = 0;
+  const abandonRenewal = () => {
+    renewals++;
+    const conn = renewConnection;
+    renewConnection = undefined;
+    // Closing it rejects the statement still waiting on it; the server ends its session once it sees the socket go.
+    if (conn) void Promise.resolve().then(() => conn.close()).catch(() => { /* already gone */ });
+  };
   const renewOnce = async (runId: string, lapseMs: number, deadline: number): Promise<boolean> => {
+    const generation = renewals;
     const left = () => Math.max(1, Math.round(deadline - Date.now()));
     const current = open();
     if (!renewConnection) {
@@ -345,6 +364,10 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       if (tuning.schema !== undefined) {
         try { await reserved.unsafe(`SET search_path TO "${tuning.schema}"`); }
         catch (cause) { void Promise.resolve().then(() => reserved.close()).catch(() => undefined); throw mapPostgresError(cause, label, "job"); }
+      }
+      if (generation !== renewals) {
+        void Promise.resolve().then(() => reserved.close()).catch(() => undefined);
+        throw new FrameworkError("This renewal was given up past its deadline");
       }
       renewConnection = reserved;
     }
@@ -392,7 +415,17 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       if (queue.insideTransaction()) {
         return Promise.reject(new FrameworkError("renewProcess cannot run inside a transaction of this layer: it renews on a connection of its own, which may wait for a lock this transaction holds"));
       }
-      const run = renewing.then(() => renewOnce(runId, lapseMs, options.deadline));
+      const { deadline } = options;
+      const run = renewing.then(() => new Promise<boolean>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          abandonRenewal();
+          reject(new DatabaseBusyError(label, 0, {
+            reason: "connection",
+            cause: new FrameworkError(`The renewal's connection did not answer within ${RENEW_ABANDON_MS} ms of the renewal's deadline, so it was closed`),
+          }));
+        }, Math.max(0, deadline - Date.now()) + RENEW_ABANDON_MS);
+        renewOnce(runId, lapseMs, deadline).then(resolve, reject).finally(() => clearTimeout(timer));
+      }));
       renewing = run.catch(() => undefined);
       return run;
     },
@@ -402,6 +435,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       const { running, queued } = queue.counts();
       if (running || queued) throw new FrameworkError(`Cannot close Postgres data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
       await reading;
+      // Bounded: a renewal settles, or is given up, at most RENEW_ABANDON_MS past its deadline.
       await renewing;
       await appended.stop();
       const closing = pool;

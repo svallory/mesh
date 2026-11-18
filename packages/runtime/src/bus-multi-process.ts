@@ -715,22 +715,30 @@ export function multiProcessChecks(
     assert(lease?.runId === runId, `this process still holds h, got ${JSON.stringify(lease)}`);
   });
 
-  // A renewal that never settles (a connection that stopped answering) is counted from when it was issued: once the
-  // row has lapsed the instance is lost, instead of waiting on it for good while other processes take the handlers.
-  add("a renewal still unsettled when the row lapses loses the instance with MESH_DELIVERER_LOST", { timing: { renewMs: 30, lapseMs: 300 } }, async (ctx) => {
+  /**
+   * A renewal that never settles (a connection that stopped answering) is counted from when it was issued: once the row
+   * has lapsed the instance is lost, instead of waiting on it for good while other processes take the handlers. While
+   * hanging, every transaction of the layer waits too (the database stopped answering), so no round's fence can notice
+   * the lapse first: only core's own deadline for the renewal does. `outsideQueue` false takes `renewProcess` away, so
+   * core renews through `transaction` (memory SQLite, an adapter without the method) and races that against the lapse.
+   */
+  const hangingRenewal = async (ctx: Ctx, outsideQueue: boolean) => {
     let hanging = false;
-    // While hanging, every other transaction of the layer waits too (the database stopped answering), so no round's
-    // fence can notice the lapse first: only the renewal's own deadline does.
     let answer!: () => void;
     const answered = new Promise<void>((resolve) => { answer = resolve; });
+    let outside = 0;
     const layer: DataLayer = Object.freeze({
       ...ctx.layer,
       transaction: (async (run, options) => {
         if (hanging) await answered;
         return ctx.layer.transaction(run, options);
       }) as DataLayer["transaction"],
-      renewProcess: (runId: string, lapseMs: number, options: { readonly deadline: number }) =>
-        hanging ? new Promise<boolean>(() => {}) : ctx.layer.renewProcess ? ctx.layer.renewProcess(runId, lapseMs, options) : ctx.layer.transaction((tx) => ops(tx).renewProcess(runId, lapseMs)),
+      renewProcess: outsideQueue
+        ? (runId: string, lapseMs: number, options: { readonly deadline: number }) => {
+          outside++;
+          return hanging ? new Promise<boolean>(() => {}) : ctx.layer.renewProcess ? ctx.layer.renewProcess(runId, lapseMs, options) : ctx.layer.transaction((tx) => ops(tx).renewProcess(runId, lapseMs));
+        }
+        : undefined,
     });
     let lost: unknown;
     const { domain, module } = scenario("empty", layer, () => {});
@@ -738,14 +746,23 @@ export function multiProcessChecks(
     await ctx.start(binding);
     await sleep(100);
     assert(lost === undefined, `renewals that settle lost nothing, got ${String(lost)}`);
+    assert(outsideQueue ? outside > 0 : outside === 0, `core renewed ${outsideQueue ? "outside the queue" : "through transaction"} (${outside} renewProcess calls)`);
     hanging = true;
     const started = Date.now();
     await until(() => lost !== undefined, "the hanging renewal lost the instance", 3000);
     const took = Date.now() - started;
     answer();
     const error = lost as unknown; // set by the callback; the assert above narrowed it to undefined
-    assert(error instanceof DelivererLostError && /stayed blocked by another connection's lock until the row lapsed/.test(error.message), String(error));
+    assert(error instanceof DelivererLostError && /was still unsettled when the row lapsed: the database or the renewal's connection stopped answering/.test(error.message), String(error));
     assert(took < 300 + 30 + 500, `lost within the lapse and the grace, after ${took} ms`);
+  };
+
+  add("a renewal still unsettled when the row lapses loses the instance with MESH_DELIVERER_LOST", { timing: { renewMs: 30, lapseMs: 300 } }, async (ctx) => {
+    await hangingRenewal(ctx, true);
+  });
+
+  add("a renewal through transaction (a layer without renewProcess) still unsettled when the row lapses loses the instance too", { timing: { renewMs: 30, lapseMs: 300 } }, async (ctx) => {
+    await hangingRenewal(ctx, false);
   });
 
   add("the two modes never deliver one database together: a live single-mode claim refuses a multi start, and the nil claim a single-mode start", { timing: IN_PROCESS }, async (ctx) => {

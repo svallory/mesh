@@ -11,6 +11,7 @@ import { DECLARATION, DatabaseBusyError, bindDomain, type DataLayer, type DataOp
 import { multiProcessConformance, setDeliveryTiming, testBus } from "@meshfw/runtime/testing";
 import { MULTI_CAPABILITIES } from "./multi-capabilities.ts";
 import { createSchema, sqlite } from "../src/index.ts";
+import { sqliteState } from "../src/layer.ts";
 import { buildSchemas } from "./multi-schema.ts";
 
 class Paid {
@@ -92,15 +93,34 @@ describe("renewProcess on a file database, beside another connection's write loc
     await layer.close();
   });
 
-  test("it renews once the lock is released within its deadline, beside the layer's queued transactions", async () => {
+  test("it renews once another connection releases the write lock within its deadline", async () => {
     const { layer, other } = await opened();
     const release = await hold(other);
-    // Queued on this layer: BEGIN IMMEDIATE waits for the same lock, for up to 5 s each.
-    const queued = [layer.transaction(async () => {}), layer.transaction(async () => {})];
     const renewal = layer.renewProcess!(RUN, 60_000, { deadline: Date.now() + 3000 });
     setTimeout(() => { void release(); }, 100);
     expect(await renewal).toBe(true);
-    await Promise.all(queued);
+    await other.close();
+    await layer.close();
+  });
+
+  // mesh-vaxr: the queue is held by a job that holds no lock (as a round's transaction awaiting something else holds
+  // it), with a transaction queued behind it. Through the queue the renewal would wait for both; it settles while they
+  // still wait.
+  test("it renews while this layer's queue is held and a transaction waits behind it", async () => {
+    const { layer, other } = await opened();
+    let free!: () => void;
+    const gate = new Promise<void>((resolve) => { free = resolve; });
+    const job = sqliteState(layer, "test").exclusive(async () => { await gate; });
+    let queuedSettled = false;
+    const queued = layer.transaction(async () => "after").finally(() => { queuedSettled = true; });
+    await Bun.sleep(50);
+    const started = Date.now();
+    expect(await layer.renewProcess!(RUN, 60_000, { deadline: started + 3000 })).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(queuedSettled).toBe(false);
+    free();
+    await job;
+    expect(await queued).toBe("after");
     await other.close();
     await layer.close();
   });
