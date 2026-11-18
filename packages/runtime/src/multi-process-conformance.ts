@@ -23,6 +23,11 @@ export interface MultiProcessConformanceOptions {
    * as it was before the winner committed.
    */
   readonly sibling?: (layer: DataLayer) => Promise<DataLayer>;
+  /**
+   * The layer offers `DataLayer.renewProcess` (a renewal outside its transaction queue). With it the "[renewal outside
+   * the queue]" checks run; with `sibling` too, the one that holds the row from the second layer.
+   */
+  readonly renewsOutsideTheQueue?: boolean;
 }
 
 type Ops = DataOperations & DeliveryOperations & MultiProcessOperations & Pick<OutboxOperations, "appendEvent" | "deleteOutboxThrough">;
@@ -398,6 +403,60 @@ export function multiProcessConformance(makeLayer: () => Promise<DataLayer>, opt
         await layer.transaction((tx) => ops(tx).readDeliveryState());
       } finally { await layer.close(); }
     };
+  }
+  if (options.renewsOutsideTheQueue) {
+    const renew = (layer: DataLayer, runId: string, lapseMs: number, deadline = Date.now() + 2000) => {
+      assert(typeof layer.renewProcess === "function", "the layer has no renewProcess");
+      return layer.renewProcess(runId, lapseMs, { deadline });
+    };
+    checks["[renewal outside the queue] renewProcess renews a row that has not lapsed, and refuses a lapsed or absent one"] = withLayer(async (layer) => {
+      await layer.transaction((tx) => ops(tx).writeProcess({ runId: RUN_A, pid: 1, startedAt: null, keep: "until-delivered", handlers: {}, declared: [] }));
+      const first = (await layer.transaction((tx) => ops(tx).readProcesses()))[0]!.renewedAt.getTime();
+      await sleep(40);
+      assert(await renew(layer, RUN_A, 60_000), "a row renewed within the lapse is renewed");
+      const second = (await layer.transaction((tx) => ops(tx).readProcesses()))[0]!.renewedAt.getTime();
+      assert(second > first, "a renewal moves renewedAt, and the next transaction sees it committed");
+      await sleep(40);
+      assert(!(await renew(layer, RUN_A, 20)), "a row older than the lapse is not renewed");
+      assert((await layer.transaction((tx) => ops(tx).readProcesses()))[0]!.renewedAt.getTime() === second, "a refused renewal writes nothing");
+      assert(!(await renew(layer, RUN_B, 60_000)), "an absent row is not renewed");
+      const [a, b] = await Promise.all([renew(layer, RUN_A, 60_000), renew(layer, RUN_A, 60_000)]);
+      assert(a && b, "two renewals at once both renew");
+    });
+    checks["[renewal outside the queue] renewProcess is refused inside a transaction of the layer, which it would not join"] = withLayer(async (layer) => {
+      await layer.transaction((tx) => ops(tx).writeProcess({ runId: RUN_A, pid: 1, startedAt: null, keep: "until-delivered", handlers: {}, declared: [] }));
+      const refused = await settled(layer.transaction(() => renew(layer, RUN_A, 60_000)));
+      assert(refused.error instanceof FrameworkError && /inside a transaction/.test(refused.error.message), `a renewal inside a transaction gave ${String(refused.error)}`);
+      assert(await renew(layer, RUN_A, 60_000), "the layer renews again once the transaction ended");
+    });
+    checks["[renewal outside the queue] a missing process table is the FrameworkError naming mesh db push"] = async () => {
+      if (!options.singleLayer) return;
+      const layer = await options.singleLayer();
+      try {
+        const missing = await settled(renew(layer, RUN_A, 60_000));
+        assert(missing.error instanceof FrameworkError && missing.error.message.includes("mesh db push"), `renewProcess on a schema without the process table gave ${String(missing.error)}`);
+      } finally { await layer.close(); }
+    };
+    if (options.sibling) {
+      checks["[renewal outside the queue] renewProcess waits for a lock on its row no longer than its deadline, then fails with DatabaseBusyError"] = withLayer(async (layer) => {
+        const other = await options.sibling!(layer);
+        try {
+          await layer.transaction((tx) => ops(tx).writeProcess({ runId: RUN_A, pid: 1, startedAt: null, keep: "until-delivered", handlers: {}, declared: [] }));
+          const held = gate();
+          const holding = gate();
+          const holder = other.transaction(async (tx) => { await ops(tx).writeProcess({ runId: RUN_A, pid: 2, startedAt: null, keep: "until-delivered", handlers: {}, declared: [] }); holding.open(); await held.wait; });
+          await holding.wait;
+          const started = Date.now();
+          const blocked = await settled(renew(layer, RUN_A, 60_000, started + 300));
+          const took = Date.now() - started;
+          held.open();
+          await holder;
+          assert(blocked.error instanceof DatabaseBusyError, `a renewal of a row another connection holds gave ${String(blocked.error ?? blocked.value)}`);
+          assert(took >= 250 && took < 2000, `the renewal gave up at its deadline (300 ms), after ${took} ms`);
+          assert(await renew(layer, RUN_A, 60_000), "once the lock is released the renewal renews");
+        } finally { await other.close(); }
+      });
+    }
   }
   return checks;
 }

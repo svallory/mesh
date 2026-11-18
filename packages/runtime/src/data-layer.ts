@@ -595,8 +595,8 @@ export interface TransactionOptions {
    * How long to wait for another connection's write lock, in milliseconds, in place of the adapter's default, counted
    * from when the transaction reaches the front of the layer's queue (not from the call). On SQLite it bounds the wait in
    * all; on Postgres it bounds each lock wait (`lock_timeout`), so a transaction that takes several locks can wait
-   * several times over. Core sets it for the claim and process-row renewals (the time left until the lapse) and for a
-   * multi-process tick's lease work (the time left until the next renewal is due).
+   * several times over. Core sets it for the claim renewal and a process-row renewal made through `transaction` (the
+   * time left until the lapse; see `DataLayer.renewProcess`) and for a multi-process tick's lease work (the time left until the next renewal is due).
    */
   readonly waitMs?: number;
 }
@@ -657,6 +657,19 @@ export interface DataLayer {
    * with LISTEN/NOTIFY; data-sqlite leaves it out.
    */
   onAppended?(listener: () => void): () => void;
+  /**
+   * Optional. `MultiProcessOperations.renewProcess` outside the transaction queue (rule P2 of delivery from several
+   * processes): one autocommit statement on a connection of its own, so no transaction of this layer, running or queued,
+   * delays it. It waits for a lock on the row at most until `deadline` (a `Date.now()` time), then rejects with
+   * `DatabaseBusyError`; it is refused inside a transaction of this layer (the row lock it needs may be that
+   * transaction's). Core renews a multi-mode process row through it when the layer has it, with the time the row
+   * lapses as the deadline; without it, through `transaction`, where the renewal waits behind whatever is queued ahead
+   * of it and can come after the lapse. data-postgres has it; data-sqlite has it for a file database, where the
+   * renewal still waits for the one write lock (SQLite has a single writer), but not behind this layer's queue. It
+   * settles soon after `deadline` even when its connection stops answering (the adapter then gives the statement up and
+   * drops that connection), so neither `close()` nor a later renewal waits on it for good.
+   */
+  renewProcess?(runId: string, lapseMs: number, options: { readonly deadline: number }): Promise<boolean>;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

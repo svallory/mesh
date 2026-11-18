@@ -18,6 +18,11 @@ import { publishEvent, type EventRecord, type EventsModule } from "./events.ts";
 export interface MultiProcessWorker {
   readonly pid: number;
   kill(signal: "SIGKILL" | "SIGTERM" | "SIGSTOP" | "SIGCONT"): void;
+  /**
+   * Whether the OS reports the process stopped (after `kill("SIGSTOP")`), for instance `ps -o stat=` showing state T.
+   * The fixture answers it, so that the runtime itself keeps to web-standard APIs.
+   */
+  stopped(): boolean;
   /** What it wrote to stdout so far. */
   output(): string;
   /** Resolves with all it wrote to stdout once it exits. */
@@ -336,8 +341,11 @@ export function multiProcessChecks(
       for (const lease of await ops(tx).readHandlerLeases()) await ops(tx).lockHandlerProgress(lease.name);
       return true;
     })();
+    // `kill` returns once the signal is queued, not once the worker stopped: on a loaded machine the worker can run on
+    // past both probes and stop holding a lock. So the probes start only once the OS reports it stopped (`worker.stopped()`).
     for (let attempt = 0; attempt < 50; attempt++) {
       worker.kill("SIGSTOP");
+      for (const end = Date.now() + 1000; !worker.stopped() && Date.now() < end;) await sleep(5);
       await sleep(10);
       const probe = () => ctx.layer.transaction(free, { waitMs: 30 }).catch(() => false);
       if (await probe() && (await sleep(20), await probe())) return;
@@ -675,6 +683,94 @@ export function multiProcessChecks(
   // a whole second, twice the lapse, with the renewal behind it.
   add("a tick's take waits for a lock no longer than the next renewal is due, so a long lock wait there does not lose the instance", { timing: { renewMs: 30, lapseMs: 500 } }, async (ctx) => {
     await stalledPeer(ctx, (read, name) => (read === "progress" && name === "h" ? 1000 : undefined));
+  });
+
+  // mesh-vaxr: the layer's queue is held for twice the lapse, as a round's transaction waiting on a stalled peer's locks
+  // holds it (on Postgres, `lock_timeout` applies to each lock, so a fence with two waits holds it twice the lock wait).
+  // Through `transaction`, the renewal waited behind it until the row had lapsed, and the instance was lost. The renewal
+  // goes outside the queue (`DataLayer.renewProcess`), so it is on time while everything else waits.
+  add("a renewal never waits behind the layer's other transactions: the queue held for twice the lapse loses nothing", { file: true, timing: { renewMs: 30, lapseMs: 400 } }, async (ctx) => {
+    assert(typeof ctx.layer.renewProcess === "function", "a layer that delivers from several processes renews its process row outside its transaction queue (DataLayer.renewProcess)");
+    let hold: Promise<void> | undefined;
+    const layer: DataLayer = Object.freeze({
+      ...ctx.layer,
+      transaction: (async (run, options) => {
+        while (hold) await hold;
+        return ctx.layer.transaction(run, options);
+      }) as DataLayer["transaction"],
+    });
+    let lost: unknown;
+    const { domain, module } = scenario("old-list", layer, () => {});
+    const binding = bindDomain(domain, layer, { events: { bus: watched(ctx.bus, (core) => { core.onClaimLost((error) => { lost = error; }); }), keep: "until-delivered", load: async () => module } }, ctx.frame);
+    await ctx.start(binding);
+    const runId = (await ownRunId(ctx))!;
+    await sleep(100);
+    const renewals: number[] = [];
+    hold = (async () => {
+      const end = Date.now() + 800;
+      while (Date.now() < end) {
+        // Read beside the held queue: the row's age by the database's clock.
+        const read = await ctx.layer.transaction(async (tx) => ({ rows: await ops(tx).readProcesses(), state: await ops(tx).readDeliveryState() }));
+        const row = read.rows.find((each) => each.runId === runId);
+        renewals.push(row === undefined ? Number.POSITIVE_INFINITY : read.state.now.getTime() - row.renewedAt.getTime());
+        await sleep(50);
+      }
+    })().finally(() => { hold = undefined; });
+    await hold;
+    assert(lost === undefined, `a queue held for twice the lapse lost the instance: ${String(lost)}`);
+    assert(renewals.length > 0 && Math.max(...renewals) < 400, `the process row stayed renewed while the queue was held, ages ${JSON.stringify(renewals)}`);
+    const lease = await ctx.lease("h");
+    assert(lease?.runId === runId, `this process still holds h, got ${JSON.stringify(lease)}`);
+  });
+
+  /**
+   * A renewal that never settles (a connection that stopped answering) is counted from when it was issued: once the row
+   * has lapsed the instance is lost, instead of waiting on it for good while other processes take the handlers. While
+   * hanging, every transaction of the layer waits too (the database stopped answering), so no round's fence can notice
+   * the lapse first: only core's own deadline for the renewal does. `outsideQueue` false takes `renewProcess` away, so
+   * core renews through `transaction` (memory SQLite, an adapter without the method) and races that against the lapse.
+   */
+  const hangingRenewal = async (ctx: Ctx, outsideQueue: boolean) => {
+    let hanging = false;
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => { answer = resolve; });
+    let outside = 0;
+    const layer: DataLayer = Object.freeze({
+      ...ctx.layer,
+      transaction: (async (run, options) => {
+        if (hanging) await answered;
+        return ctx.layer.transaction(run, options);
+      }) as DataLayer["transaction"],
+      renewProcess: outsideQueue
+        ? (runId: string, lapseMs: number, options: { readonly deadline: number }) => {
+          outside++;
+          return hanging ? new Promise<boolean>(() => {}) : ctx.layer.renewProcess ? ctx.layer.renewProcess(runId, lapseMs, options) : ctx.layer.transaction((tx) => ops(tx).renewProcess(runId, lapseMs));
+        }
+        : undefined,
+    });
+    let lost: unknown;
+    const { domain, module } = scenario("empty", layer, () => {});
+    const binding = bindDomain(domain, layer, { events: { bus: watched(ctx.bus, (core) => { core.onClaimLost((error) => { lost = error; }); }), keep: "until-delivered", load: async () => module } }, ctx.frame);
+    await ctx.start(binding);
+    await sleep(100);
+    assert(lost === undefined, `renewals that settle lost nothing, got ${String(lost)}`);
+    assert(outsideQueue ? outside > 0 : outside === 0, `core renewed ${outsideQueue ? "outside the queue" : "through transaction"} (${outside} renewProcess calls)`);
+    hanging = true;
+    const started = Date.now();
+    await until(() => lost !== undefined, "the hanging renewal lost the instance", 3000);
+    const took = Date.now() - started;
+    answer();
+    const error = lost as unknown; // set by the callback; the assert above narrowed it to undefined
+    assert(error instanceof DelivererLostError && /was still unsettled when the row lapsed: the database or the renewal's connection stopped answering/.test(error.message), String(error));
+    assert(took < 300 + 30 + 500, `lost within the lapse and the grace, after ${took} ms`);
+  };
+
+  add("a renewal still unsettled when the row lapses loses the instance with MESH_DELIVERER_LOST", { timing: { renewMs: 30, lapseMs: 300 } }, async (ctx) => {
+    await hangingRenewal(ctx, true);
+  });
+
+  add("a renewal through transaction (a layer without renewProcess) still unsettled when the row lapses loses the instance too", { timing: { renewMs: 30, lapseMs: 300 } }, async (ctx) => {
+    await hangingRenewal(ctx, false);
   });
 
   add("the two modes never deliver one database together: a live single-mode claim refuses a multi start, and the nil claim a single-mode start", { timing: IN_PROCESS }, async (ctx) => {

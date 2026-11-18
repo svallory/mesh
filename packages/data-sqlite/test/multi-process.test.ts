@@ -11,6 +11,7 @@ import { DECLARATION, DatabaseBusyError, bindDomain, type DataLayer, type DataOp
 import { multiProcessConformance, setDeliveryTiming, testBus } from "@meshfw/runtime/testing";
 import { MULTI_CAPABILITIES } from "./multi-capabilities.ts";
 import { createSchema, sqlite } from "../src/index.ts";
+import { sqliteState } from "../src/layer.ts";
 import { buildSchemas } from "./multi-schema.ts";
 
 class Paid {
@@ -40,10 +41,103 @@ for (const kind of ["memory", "file"] as const) {
       await createSchema(layer, tables());
       return layer;
     };
-    const checks = multiProcessConformance(layerWith(() => multi), { singleLayer: layerWith(() => single) });
+    const checks = multiProcessConformance(layerWith(() => multi), { singleLayer: layerWith(() => single), renewsOutsideTheQueue: kind === "file" });
+    test(kind === "file" ? "a file database renews outside its queue" : "a memory database has no renewal outside its queue", async () => {
+      const layer = await layerWith(() => multi)();
+      try { expect(typeof layer.renewProcess).toBe(kind === "file" ? "function" : "undefined"); } finally { await layer.close(); }
+    });
+    if (kind === "file") test("checks of the renewal outside the queue run", () => {
+      expect(Object.keys(checks).filter((name) => name.startsWith("[renewal outside the queue]")).length).toBe(3);
+    });
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
 }
+
+describe("renewProcess on a file database, beside another connection's write lock", () => {
+  const dirs: string[] = [];
+  afterAll(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  const RUN = "00000000-0000-4000-8000-00000000000a";
+  const row = { runId: RUN, pid: 1, startedAt: null, keep: "until-delivered" as const, handlers: {}, declared: [] };
+  const opened = async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mesh-renew-"));
+    dirs.push(dir);
+    const file = join(dir, "app.db");
+    const layer = sqlite({ file });
+    await createSchema(layer, multi);
+    await layer.transaction((tx) => (tx as DataOperations & MultiProcessOperations).writeProcess(row));
+    return { layer, other: sqlite({ file }) };
+  };
+  /** Holds the write lock from `other` until the returned release is called. */
+  const hold = async (other: DataLayer) => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => { holding = resolve; });
+    const done = other.transaction(async (tx) => { await (tx as DataOperations & MultiProcessOperations).writeProcess({ ...row, pid: 2 }); holding(); await released; });
+    await held;
+    return async () => { release(); await done; };
+  };
+
+  test("it waits for the lock until its deadline, then fails with MESH_DATABASE_BUSY", async () => {
+    const { layer, other } = await opened();
+    const release = await hold(other);
+    const started = Date.now();
+    const error = await layer.renewProcess!(RUN, 60_000, { deadline: started + 200 }).then(() => undefined, (failure: unknown) => failure);
+    const took = Date.now() - started;
+    await release();
+    expect(error).toBeInstanceOf(DatabaseBusyError);
+    expect(took).toBeGreaterThanOrEqual(190);
+    expect(took).toBeLessThan(1500);
+    expect(await layer.renewProcess!(RUN, 60_000, { deadline: Date.now() + 1000 })).toBe(true);
+    await other.close();
+    await layer.close();
+  });
+
+  test("it renews once another connection releases the write lock within its deadline", async () => {
+    const { layer, other } = await opened();
+    const release = await hold(other);
+    const renewal = layer.renewProcess!(RUN, 60_000, { deadline: Date.now() + 3000 });
+    setTimeout(() => { void release(); }, 100);
+    expect(await renewal).toBe(true);
+    await other.close();
+    await layer.close();
+  });
+
+  // mesh-vaxr: the queue is held by a job that holds no lock (as a round's transaction awaiting something else holds
+  // it), with a transaction queued behind it. Through the queue the renewal would wait for both; it settles while they
+  // still wait.
+  test("it renews while this layer's queue is held and a transaction waits behind it", async () => {
+    const { layer, other } = await opened();
+    let free!: () => void;
+    const gate = new Promise<void>((resolve) => { free = resolve; });
+    const job = sqliteState(layer, "test").exclusive(async () => { await gate; });
+    let queuedSettled = false;
+    const queued = layer.transaction(async () => "after").finally(() => { queuedSettled = true; });
+    await Bun.sleep(50);
+    const started = Date.now();
+    expect(await layer.renewProcess!(RUN, 60_000, { deadline: started + 3000 })).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(queuedSettled).toBe(false);
+    free();
+    await job;
+    expect(await queued).toBe("after");
+    await other.close();
+    await layer.close();
+  });
+
+  test("close() waits for a running renewal, and the next renewal opens its connection again", async () => {
+    const { layer, other } = await opened();
+    const release = await hold(other);
+    const renewal = layer.renewProcess!(RUN, 60_000, { deadline: Date.now() + 3000 });
+    const closing = layer.close();
+    setTimeout(() => { void release(); }, 100);
+    expect(await renewal).toBe(true);
+    await closing;
+    expect(await layer.renewProcess!(RUN, 60_000, { deadline: Date.now() + 1000 })).toBe(true);
+    await other.close();
+    await layer.close();
+  });
+});
 
 describe("a multi-mode start against other processes' transactions", () => {
   const dirs: string[] = [];

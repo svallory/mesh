@@ -198,6 +198,15 @@ const leaseOf = (row: LeaseColumns): HandlerLeaseRow => Object.freeze({
 });
 
 /**
+ * `renewProcess`'s one statement, run at once on `db`: inside a transaction's operations, or alone in autocommit on the
+ * layer's renewal connection (`DataLayer.renewProcess`). A missing table is the `mesh db push` error; a busy failure is
+ * SQLite's own, for the caller to retry or report.
+ */
+export function renewProcessStatement(db: Database, runId: string, lapseMs: number): boolean {
+  return withMultiTables(() => db.query(`UPDATE ${DELIVERY_PROCESS_TABLE} SET renewed_at = ${NOW_MS} WHERE run_id = ? AND ${NOW_MS} - renewed_at < ?`).run(runId, lapseMs).changes === 1);
+}
+
+/**
  * The delivery operations of multi mode on SQLite (`MultiProcessOperations`): the process rows, the leases on the
  * progress rows, the subscription owners and the recorded `keep`. SQLite has one writer, and the `BEGIN IMMEDIATE`
  * transaction holds it from the start, so every `lock*` is a plain read. Only a project whose bus declares
@@ -251,8 +260,7 @@ export function multiProcessOperations(client: () => Database, run: <T>(statemen
            keep = excluded.keep, handlers = excluded.handlers, declared = excluded.declared`,
       ).run(row.runId, row.host === undefined ? hostname() : row.host, row.pid, row.startedAt?.getTime() ?? null, row.keep, JSON.stringify(row.handlers), JSON.stringify(row.declared));
     }),
-    renewProcess: (runId, lapseMs) => exec(() =>
-      db().query(`UPDATE ${DELIVERY_PROCESS_TABLE} SET renewed_at = ${NOW_MS} WHERE run_id = ? AND ${NOW_MS} - renewed_at < ?`).run(runId, lapseMs).changes === 1),
+    renewProcess: (runId, lapseMs) => exec(() => renewProcessStatement(db(), runId, lapseMs)),
     deleteProcess: (runId) => exec(() => db().query(`DELETE FROM ${DELIVERY_PROCESS_TABLE} WHERE run_id = ?`).run(runId).changes === 1),
     readSubscriptionOwners: () => exec(() =>
       Object.freeze((db().query(`SELECT name, position, filter, seen_at, open, generation, run_id FROM ${SUBSCRIPTION_PROGRESS_TABLE} ORDER BY name`).all() as {
