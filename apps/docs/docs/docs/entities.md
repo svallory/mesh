@@ -860,7 +860,7 @@ entity :Invoice
 
 ### always
 
-`always` takes an action body and applies it across a scope. Its checks run before the action's checks, and its steps before the action's steps. It may hold `validate`, `do` or both. Its `validate` may use a named check with `check &name`, which the build then checks for each action the block covers, and an action that lists the same named check itself, or through a second block, is a build error, since it would run the check twice.
+`always` takes an action body and applies it across a scope. Its checks run before the action's checks, and its steps before the action's steps. It may hold `validate`, `do` or both. Its `validate` may use a named check with `check &name`, which the build then checks for each action the block covers, and an action that lists the same named check itself, or through a second block, is a build error, since it would run the check twice. Likewise a member is set once per action: a `set` of a member that a block covering the action also sets, in the action's own `do` or in a second covering block, is a build error at the later `set` (`MESH_DUPLICATE_SET`).
 
 The larger example uses `always types=[:create, :update]` for a date rule on every create and update. `actions=[&send, &pay]` instead names particular actions. Neither option means every action in the entity.
 

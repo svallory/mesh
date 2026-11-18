@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import type { Diagnostic, Entity, Expression, ModelDocument, Policy, Relationship, SourcePosition, Step } from "@meshfw/model";
 import { actionExpressions, checksOf, VALIDATE_KINDS } from "./action-expressions.ts";
 import { error } from "./diagnostics.ts";
+import { mixinOfLine } from "./includers.ts";
 import { alwaysCovers, loadPolicies, policiesCovering, policyExpressions, recordReason } from "./policies.ts";
 
 /**
@@ -220,7 +221,45 @@ export function checkLifecycleLimits(
           listing.at, `remove this \`check &${listing.name}\`, or scope the \`always\` block with \`types=\` or \`actions=\` so it does not cover ${action.kind} :${action.name}`));
       }
     }
+    // A member is set once per action: one that an `always` block covering the action sets, and that the action's own
+    // `set` or another covering block sets too, would be written twice in one action (ruling D37 OD11, the mixins design's
+    // R28; a block from a mixin is "as if written there"). Sets at any depth of a step `when` count; two of the action's
+    // own sets are the builder's (one `set` block) or exclusive branches. Each later write is reported once, at its
+    // member, naming the first action it happens for. A destroy's `set` is `MESH_DESTROY_STEP` already.
+    const written = new Set<string>();
+    for (const action of [...entity.actions, ...entity.auto.map((kind) => ({ kind, name: kind as string, do: [] as Step[] }))]) {
+      if (action.kind !== "create" && action.kind !== "update") continue;
+      const writes = [
+        ...entity.always.filter((block) => alwaysCovers(block, action)).flatMap((block) => setsIn(block.do).map((member) => ({ member, block }))),
+        ...setsIn(action.do).map((member) => ({ member, block: undefined })),
+      ];
+      const first = new Map<string, (typeof writes)[number]>();
+      for (const write of writes) {
+        const earlier = first.get(write.member.name);
+        if (!earlier) { first.set(write.member.name, write); continue; }
+        if (!earlier.block) continue;
+        const key = `${write.member.position.file}:${write.member.position.offset}`;
+        if (written.has(key)) continue;
+        written.add(key);
+        const block = earlier.block;
+        const line = `${block.position.file === write.member.position.file ? "line " : `${block.position.file}:`}${block.position.line}`;
+        const mixin = mixinOfLine(block);
+        const name = write.member.name;
+        diagnostics.push(error("MESH_DUPLICATE_SET",
+          `&${name} is already set in ${action.kind} :${action.name} of ${entity.fqn} by the \`always\` block ${mixin ? `of the mixin ${mixin} (${line})` : `at ${line}`}, and a member is set once per action`,
+          write.member.position,
+          mixin
+            ? `remove this \`&${name}=\`: the mixin ${mixin} sets &${name} in every action its \`always\` block covers`
+            : `remove this \`&${name}=\`, or scope the \`always\` block with \`types=\` or \`actions=\` so it does not cover ${action.kind} :${action.name}`));
+      }
+    }
   }
+}
+
+/** The member of every `set` line among the steps, at any depth of `when`, in written order. */
+function setsIn(steps: readonly Step[]): { name: string; position: SourcePosition }[] {
+  return steps.flatMap((step) => step.kind === "set" ? step.assignments.map((assignment) => assignment.member)
+    : step.kind === "when" ? setsIn(step.steps) : []);
 }
 
 /**

@@ -81,7 +81,7 @@ import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import { checkServices } from "../model/services.ts";
 import { aggregateNamesOf, checkArchitecture, DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
-import { mergeIncluders, tagIncluder } from "../model/includers.ts";
+import { markFromMixin, mergeIncluders, tagIncluder } from "../model/includers.ts";
 import { buildService } from "./services.ts";
 import {
   atomForwards,
@@ -1575,11 +1575,13 @@ function buildEntity(
       }
       for (const tag of tags(actionSection.children)) {
         if (tag.name === "always") {
-          entity.always.push({
+          const block: Always = {
             ...scope(tag),
             ...body(tag, true),
             position: pos(tag),
-          } satisfies Always);
+          };
+          if (src.use) markFromMixin(block, src.use.name);
+          entity.always.push(block);
           continue;
         }
         const kind = tag.name as ActionType;

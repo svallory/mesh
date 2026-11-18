@@ -65,3 +65,13 @@ export function mergeIncluders(diagnostics: Diagnostic[], includersOf: ReadonlyM
   diagnostics.length = 0;
   diagnostics.push(...rest);
 }
+
+/** The mixin each model object read from a mixin's lines came from, by its name as written (`markFromMixin`). */
+const fromMixins = new WeakMap<object, string>();
+/**
+ * Records that `line` (an `always` block) was read from the mixin `name`, so a later stage can name the mixin in a message:
+ * a shipped mixin's lines are positioned at the `use` line (ruling D37 OD5), where nothing else says where they came from.
+ */
+export const markFromMixin = (line: object, name: string): void => { fromMixins.set(line, name); };
+/** The mixin `line` was read from, or undefined for a line the entity's own file holds. */
+export const mixinOfLine = (line: object): string | undefined => fromMixins.get(line);
