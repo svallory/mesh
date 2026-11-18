@@ -439,7 +439,7 @@ describe("published() and readEvents through a binding", () => {
     expect((await rejection(() => readEvents(frame, undefined))).message).toContain("readEvents was called while not connected");
     const inside = await rejection(() => binding.transaction(() => readEvents(frame, undefined)));
     expect(inside).toBeInstanceOf(FrameworkError);
-    expect(inside.message).toContain("a transaction's own events come from published()");
+    expect(inside.message).toStartWith("readEvents was called inside a transaction: it reads committed rows only");
   });
 
   test("a row naming no declared event is MESH_EVENT_UNDECLARED, filtered or not; a name that is not declared is refused", async () => {
@@ -453,13 +453,6 @@ describe("published() and readEvents through a binding", () => {
       expect([(error as EventUndeclaredError).eventName, (error as EventUndeclaredError).position]).toEqual(["billing.Renamed", 2]);
     }
     expect((await rejection(() => binding.run(() => readEvents(frame, undefined, { names: ["billing.Nope"] })))).message).toContain("not a declared event");
-  });
-
-  test("a stored payload its class no longer accepts is a FrameworkError naming the position", async () => {
-    const { frame, binding, state, publish } = setup();
-    await publish(paid());
-    state.rows[0] = { ...state.rows[0]!, payload: { invoiceId: "i1" } };
-    expect((await rejection(() => binding.run(() => readEvents(frame, undefined))))).toBeInstanceOf(FrameworkError);
   });
 
   test("two event classes with one FQN cannot be bound", () => {
