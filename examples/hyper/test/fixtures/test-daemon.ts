@@ -14,6 +14,8 @@
 // can have a claim lapse, or a subscription overflow, in a fraction of the defaults. `MESH_TEST_GRACE_MS`, when set, is
 // how long the daemon waits for its calls in flight before it exits anyway, in place of the real 4 s — the hang test
 // uses it so its point, the grace exit itself, is reached without waiting the whole grace period.
+// `MESH_TEST_CLOSE_FAILS`, when set, makes the started daemon's `close()` reject after it has closed, so a test can see
+// the signal handler's exit when closing fails.
 import { localBus } from "@meshfw/bus-local";
 import type { MethodTable } from "@meshfw/jsonrpc";
 import type { ActionContext } from "@meshfw/runtime";
@@ -77,5 +79,7 @@ await runDaemon(async () => {
     console.error("starting");
     await Promise.race([signalled, Bun.sleep(Number(delay))]);
   }
-  return startDaemon(options);
+  const daemon = await startDaemon(options);
+  if (process.env.MESH_TEST_CLOSE_FAILS === undefined) return daemon;
+  return { ...daemon, close: async () => { await daemon.close(); throw new Error("planted close failure"); } };
 }, graceMs);

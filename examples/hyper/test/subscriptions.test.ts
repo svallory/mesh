@@ -1,11 +1,12 @@
 // PROTOCOL.md §8: connection lifetime owns streams; autonomous failure is a disconnect, not a new notification.
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { createSchema, sqlite } from "@meshfw/data-sqlite";
-import { serve, type Connection, type Server } from "@meshfw/jsonrpc";
-import type { BusCore, Delivery, DeliveryOperations, EventBus } from "@meshfw/runtime";
+import { serve, type Call, type Connection, type Server } from "@meshfw/jsonrpc";
+import { CursorAheadError, type BusCore, type Delivery, type DeliveryOperations, type EventBus } from "@meshfw/runtime";
 import { bind, tables } from "#mesh";
 import { Client, gate, socketDir } from "../../../packages/jsonrpc/test/client.ts";
 import { bootstrap } from "../src/daemon/bootstrap";
+import { wireError } from "../src/rpc/errors";
 import { attachEventLog } from "../src/rpc/event-log";
 import { closeAll, closeSubscription, openSubscription } from "../src/rpc/subscriptions";
 import { events } from "./world";
@@ -16,6 +17,7 @@ let server: Server;
 let core: BusCore;
 let delivery: Delivery;
 let connection: Connection;
+let binding: ReturnType<typeof bind>;
 const clients: Client[] = [];
 
 beforeEach(async () => {
@@ -30,7 +32,7 @@ beforeEach(async () => {
       return { async start() {}, async stop() {}, async deliver() {} };
     },
   };
-  const binding = bind(db, { events: { ...events, bus } });
+  binding = bind(db, { events: { ...events, bus } });
   attachEventLog({ binding });
   await bootstrap(binding);
   delivery = await binding.startDelivery();
@@ -138,3 +140,22 @@ test("unsubscribe ends only its own stream and keeps the connection and other su
   await closed.promise;
   expect(core.subscriptions()).toHaveLength(0);
 });
+
+// `src/rpc/errors.ts` maps a cursor above the log's head for events.read or events.subscribe; the read side is
+// `events.test.ts`. A reconnecting client with a cursor past the head gets -32602 on `after`, and no stream is left open.
+test("a subscription after the log's head is refused CursorAheadError, wired as -32602 on after, and opens no stream", async () => {
+  const client = await connect();
+  await subscribe(client, 0);
+  const head = (await core.rows(0, 1_000)).highest;
+  const before = core.subscriptions().map((entry) => entry.name);
+  // As the server runs a method: inside the binding.
+  const error = await binding.run(() => openSubscription({ after: head + 5 }, connection)).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(CursorAheadError);
+  const wired = wireError(error, { method: "events.subscribe", id: 1, params: { after: head + 5 } } as unknown as Call);
+  expect(wired).toMatchObject({ code: -32602, message: "invalid_params", data: { phase: "shape", failures: [{ check: "schema", details: { path: ["after"], head } }] } });
+  expect(core.subscriptions().map((entry) => entry.name)).toEqual(before);
+  // The legal neighbour: a cursor at the head opens a stream.
+  await binding.run(() => openSubscription({ after: head }, connection));
+  expect(core.subscriptions()).toHaveLength(before.length + 1);
+});
+
