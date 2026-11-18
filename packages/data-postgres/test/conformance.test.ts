@@ -63,7 +63,10 @@ describeServer("the policy-guards checks under a forced generic plan, Postgres",
     };
   };
   const checks = Object.entries(dataLayerConformanceV1(make, capabilities)).filter(([name]) => name.startsWith("policy-guards: "));
-  test("the policy-guards group is in the suite", () => { expect(checks.length).toBeGreaterThan(0); });
+  test("the policy-guards group is in the suite and the manifest declares it, so its checks run", () => {
+    expect(checks.length).toBeGreaterThan(0);
+    expect(capabilities.capabilities).toContain("policy-guards");
+  });
   for (const [name, check] of checks) test(name, check, 60_000);
 });
 
