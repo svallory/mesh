@@ -184,7 +184,8 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
   };
 
   /**
-   * The pool, made on first use: one connection for the running transaction and one for the outbox reader. The
+   * The pool, made on first use: one connection for the running transaction, one for the outbox reader and one for
+   * process-row renewals (`renewProcess`, delivery from several processes; never reserved otherwise). The
    * `LISTEN` is not in it: Bun.SQL's `listen()` opens a dedicated connection of its own (shared by every `listen()` of
    * this pool), so a third pool connection would serve nothing.
    */
@@ -193,7 +194,7 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     const target = url("postgres");
     // Bun's connect timeout is in seconds and 30 by default; bounded by the layer's lock wait, a connect that never
     // answers ends soon after the job that asked for it gave up (`reserveWithin`), so close() is not held by it.
-    try { pool = new BunSQL(target, { max: 2, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
+    try { pool = new BunSQL(target, { max: 3, connectionTimeout: Math.max(1, Math.ceil(defaultWaitMs / 1000)) }); }
     catch (cause) { throw mapPostgresError(cause, label, "connect"); }
     // Listeners kept across close() listen again on the new pool.
     appended.resume();
@@ -325,6 +326,46 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
     return reader.read(query, sequenceName, after, limit);
   };
 
+  /**
+   * The connection process-row renewals run on (`DataLayer.renewProcess`), outside the transaction queue: reserved on
+   * the first renewal and kept until close() or until it breaks. One renewal at a time, each one autocommit `UPDATE` at
+   * the server's default isolation after a `SET lock_timeout` to the time left before its deadline, so the only wait
+   * it can meet is a lock on its own row (a release, or a peer deleting the row once it lapsed).
+   */
+  let renewConnection: ReservedSQL | undefined;
+  let renewing: Promise<unknown> = Promise.resolve();
+  const renewOnce = async (runId: string, lapseMs: number, deadline: number): Promise<boolean> => {
+    const left = () => Math.max(1, Math.round(deadline - Date.now()));
+    const current = open();
+    if (!renewConnection) {
+      const started = performance.now();
+      let reserved: ReservedSQL;
+      try { reserved = await reserveWithin(current, { started, at: started + left() }); }
+      catch (cause) { throw mapPostgresError(cause, label, "connect"); }
+      if (tuning.schema !== undefined) {
+        try { await reserved.unsafe(`SET search_path TO "${tuning.schema}"`); }
+        catch (cause) { void Promise.resolve().then(() => reserved.close()).catch(() => undefined); throw mapPostgresError(cause, label, "job"); }
+      }
+      renewConnection = reserved;
+    }
+    const conn = renewConnection;
+    let waitMs = 0;
+    const query: Query = async (text, params) => {
+      try { return await conn.unsafe(text, params as unknown[] | undefined); }
+      catch (cause) {
+        const mapped = mapPostgresError(cause, label, "job", waitMs);
+        if (isConnectionLoss(mapped)) {
+          if (renewConnection === conn) renewConnection = undefined;
+          void Promise.resolve().then(() => conn.close()).catch(() => { /* already gone */ });
+        }
+        throw mapped;
+      }
+    };
+    waitMs = left();
+    await query(`SET lock_timeout = '${waitMs}ms'`);
+    return multiProcessOperations(query, () => Promise.reject(new FrameworkError("renewProcess reads no sequence")), holesColumn).renewProcess(runId, lapseMs);
+  };
+
   const state: State = {
     url,
     schema: tuning.schema,
@@ -346,17 +387,29 @@ export function postgresWith(options: PostgresOptions, tuning: Tuning): Postgres
       reading = read.catch(() => undefined);
       return read;
     },
+    renewProcess(runId, lapseMs, options) {
+      // The row lock it may wait for can be this transaction's own (a release in it), which holds until it ends.
+      if (queue.insideTransaction()) {
+        return Promise.reject(new FrameworkError("renewProcess cannot run inside a transaction of this layer: it renews on a connection of its own, which may wait for a lock this transaction holds"));
+      }
+      const run = renewing.then(() => renewOnce(runId, lapseMs, options.deadline));
+      renewing = run.catch(() => undefined);
+      return run;
+    },
     refuseIfFailed: () => queue.refuseIfFailed(),
     onAppended: (listener) => appended.add(listener),
     async close() {
       const { running, queued } = queue.counts();
       if (running || queued) throw new FrameworkError(`Cannot close Postgres data layer: ${running} running and ${queued} queued; wait for transactions to settle`);
       await reading;
+      await renewing;
       await appended.stop();
       const closing = pool;
       pool = undefined;
       readConnection?.release();
       readConnection = undefined;
+      renewConnection?.release();
+      renewConnection = undefined;
       sequenceName = undefined;
       holesColumn = new HolesColumn();
       reader = new OutboxReader(lockKey, holesColumn);

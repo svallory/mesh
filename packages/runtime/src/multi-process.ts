@@ -14,6 +14,12 @@ import {
 } from "./errors.ts";
 
 /**
+ * How long past the lapse a renewal may still settle before core counts it a lock wait until the lapse: the adapter's
+ * own deadline (its lock wait, its retry) ends at the lapse, and its error should be the one reported.
+ */
+const RENEW_GRACE_MS = 50;
+
+/**
  * Delivery from several processes (multi mode; design `notes/architecture/m9-multi-process-design.md`, rules M, P, L, R,
  * S and K): entered when the configured bus declares `multi-process`. There is no single deliverer: each delivering
  * process writes its row in `mesh_delivery_process`, renewed every 5 s; the claim columns of `mesh_outbox_state` hold the
@@ -137,6 +143,8 @@ export class MultiClaim implements ClaimStrategy {
   #renewal: ReturnType<typeof setTimeout> | undefined;
   /** A tick's lease work while it runs: a tick that comes meanwhile only renews. */
   #leaseWork: Promise<void> | undefined;
+  /** The last renewal statement, settled either way: `release` waits for it. */
+  #renewing: Promise<void> = Promise.resolve();
   #halted = true;
 
   constructor(readonly deliverer: Deliverer) {}
@@ -306,7 +314,8 @@ export class MultiClaim implements ClaimStrategy {
    * drop the leases no longer held, clear the yielded ones that still name this process, refresh the snapshots; then move
    * the renames that no live process blocks any more, and take the free leases. The next tick is scheduled once the
    * renewal succeeded, not once the lease work ended, so the lease work's lock waits no longer add to the renewal
-   * period; `#leases` says what bounds them and what does not.
+   * period; and the renewal itself goes outside the layer's queue when the layer offers that (`#renewOnce`), so no
+   * transaction of the layer delays it (mesh-vaxr).
    */
   async tick(): Promise<void> {
     const deliverer = this.deliverer;
@@ -314,8 +323,9 @@ export class MultiClaim implements ClaimStrategy {
     const deadline = deliverer.renewedAt + timing.lapseMs;
     for (let attempt = 0; ; attempt++) {
       try {
-        const waitMs = Math.max(1, deadline - Date.now());
-        const renewed = await deliverer.layer.transaction((tx) => multiOperations(tx).renewProcess(RUN_ID, timing.lapseMs), { waitMs });
+        const renewal = this.#renewOnce(deadline);
+        this.#renewing = renewal.then(() => undefined, () => undefined);
+        const renewed = await renewal;
         if (!deliverer.holding || !this.#active()) return;
         if (!renewed) { deliverer.lose("a renewal of this process's row updated no row, so it lapsed and its handlers may have been taken over"); return; }
         deliverer.renewedAt = Date.now();
@@ -340,10 +350,9 @@ export class MultiClaim implements ClaimStrategy {
       }
     }
     // The next renewal is due `renewMs` after this one, whatever the lease work below waits for. Scheduled after the
-    // lease work, a renewal came `renewMs` plus every lock wait of that work late, and then queued behind this layer's
-    // other transactions (one at a time): a process stalled inside a transaction (paused, swapped out) made the live
-    // ones wait on its locks until their own rows lapsed, and they stopped with MESH_DELIVERER_LOST instead of taking
-    // its handlers over.
+    // lease work, a renewal came `renewMs` plus every lock wait of that work late: a process stalled inside a
+    // transaction (paused, swapped out) made the live ones wait on its locks until their own rows lapsed, and they
+    // stopped with MESH_DELIVERER_LOST instead of taking its handlers over.
     this.#schedule();
     if (this.#leaseWork) return;
     const work = this.#leases(deliverer.renewedAt + timing.renewMs);
@@ -352,15 +361,39 @@ export class MultiClaim implements ClaimStrategy {
   }
 
   /**
+   * One renewal statement, waiting for a lock at most until `deadline`, the time the row lapses (rule P2; mesh-vaxr). It
+   * goes outside the layer's transaction queue when the layer offers that (`DataLayer.renewProcess`), so no other
+   * transaction of the layer, a round's or the application's, running or queued, delays it. Through `transaction` it
+   * waits behind whatever is queued ahead of it (the layer counts `waitMs` from the front of its queue, and on Postgres
+   * per lock), which a round waiting on a stalled peer's locks can make longer than the lapse.
+   */
+  async #renewOnce(deadline: number): Promise<boolean> {
+    const layer = this.deliverer.layer;
+    const renewal = layer.renewProcess
+      ? layer.renewProcess(RUN_ID, timing.lapseMs, { deadline })
+      : layer.transaction((tx) => multiOperations(tx).renewProcess(RUN_ID, timing.lapseMs), { waitMs: Math.max(1, deadline - Date.now()) });
+    // A real deadline from issue time: a renewal still unsettled when the row lapses (a connection that never answers,
+    // a queue that never reaches it) is a lock wait until the lapse, whatever it does afterwards.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new DatabaseBusyError(layer.database ?? "the database", Math.max(1, Math.round(timing.lapseMs)), { reason: "lock-timeout" }));
+      }, Math.max(0, deadline - Date.now()) + RENEW_GRACE_MS);
+    });
+    try { return await Promise.race([renewal, expired]); }
+    finally { clearTimeout(timer); renewal.catch(() => undefined); }
+  }
+
+  /**
    * The lease work of a tick (rules P5, L6, R7); what it could not do the next tick does. `until` is when the next
    * renewal is due. Each transaction gets `waitMs` = the time left until then, worked out when it is issued, and no
    * rename or take starts once that time has passed. That is a cap on each transaction's lock wait, not a deadline:
-   * the layer counts `waitMs` from when the transaction reaches the front of its queue, not from when it was issued,
-   * and data-postgres applies it to each lock (`lock_timeout`), so a transaction that takes several locks
-   * (`#afterRenewal`, `#moveRenamed`) can wait several times over. The rounds' transactions, in the same queue, keep the
-   * layer's default wait. What keeps the instance is the renewal's own retry until the lapse, which has
-   * `lapseMs - renewMs` (10 s with the shipped numbers) to absorb the waits queued ahead of it (mesh-vaxr tracks
-   * bounding those).
+   * the layer counts `waitMs` from when the transaction reaches the front of its queue, and data-postgres applies it to
+   * each lock (`lock_timeout`), so a transaction that takes several locks (`#afterRenewal`, `#moveRenamed`) can wait
+   * several times over, and the rounds' transactions keep the layer's default wait. None of that reaches the renewal
+   * on a layer with `renewProcess`, which does not queue (mesh-vaxr); the cap only keeps the lease work from running
+   * into the next tick. On a layer without it the renewal queues behind these waits and has its retry until the
+   * lapse (`lapseMs - renewMs`, 10 s with the shipped numbers) to absorb them.
    */
   async #leases(until: number): Promise<void> {
     const within = (): TransactionOptions => ({ waitMs: Math.max(1, until - Date.now()) });
@@ -694,6 +727,9 @@ export class MultiClaim implements ClaimStrategy {
    * row lapses, and this process may retake leases that still name it); any other unless `quiet`.
    */
   async release(quiet: boolean): Promise<void> {
+    // A renewal outside the queue may still be running: released beside it, the release could fail on its row lock or
+    // as a serialization failure and leave the row to lapse instead of going at once.
+    await this.#renewing;
     try {
       await this.deliverer.layer.transaction(async (tx) => {
         const ops = multiOperations(tx);
