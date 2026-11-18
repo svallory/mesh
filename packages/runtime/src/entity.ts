@@ -13,7 +13,7 @@ import { DECLARATION, type Declaration } from "./declarations.ts";
 import { dispatching } from "./dispatch.ts";
 import type { HandlerKind } from "./bus.ts";
 import { NO_RENAMES, renamedMap } from "./stored-names.ts";
-import { causedIn, keepEventsProblems, keepProblem, keepRulesOf, loadEvents, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type KeepRules, type ReadEventsPage, type ReadEventsQuery } from "./events.ts";
+import { causedIn, keepEventsProblems, keepProblem, keepRulesOf, loadEvents, publishedIn, quietIn, readEventsFrom, type EventClass, type EventRecord, type EventsConfig, type KeepRules, type ReadEventsPage, type ReadEventsQuery, type SectionHandlers } from "./events.ts";
 import { deliverRound, startDelivery, type Delivery } from "./deliverer.ts";
 
 /**
@@ -180,6 +180,8 @@ interface BindingState {
   released: boolean;
   /** The project's async frame. */
   readonly frame: AsyncFrame;
+  /** The handlers the project's `handlers` sections declare, as the generated `bind` passes them; none without one. */
+  readonly sectionHandlers: SectionHandlers | undefined;
 }
 
 /**
@@ -564,12 +566,14 @@ function actionFrame(frame: AsyncFrame, state: BindingState, question?: Question
  * functions) is skipped. Called inside the generated `bind`, never at module top level, so every barrel has finished
  * evaluating. `frame` is the project's async frame: every binding of one project shares it, so a nested `run` of another
  * binding is the innermost.
+ * `handlers` holds the handlers the project's `handlers` sections declare (`mergeHandlers` of the generated
+ * `<owner>.handlers.ts` files): every binding that delivers registers them beside the events module's.
  */
-export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame): Binding {
+export function bindDomain(domain: object, layer: DataLayer, options: BindOptions, frame: AsyncFrame, handlers?: SectionHandlers): Binding {
   const entities: BindingState["entities"] = new Map();
   const events: BindingState["events"] = new Map();
   const services: BindingState["services"] = new Map();
-  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, keepRules: null, services, inFlight: 0, idle: [], released: false, frame };
+  const state: BindingState = { binding: undefined as unknown as Binding, layer, options, entities, events, renamed: NO_RENAMES, keepRules: null, services, inFlight: 0, idle: [], released: false, frame, sectionHandlers: handlers };
   const handle = actionFrame(frame, state);
   const walk = (namespace: object) => {
     for (const value of Object.values(namespace)) {
@@ -949,12 +953,14 @@ export interface BindingParts {
   readonly renamed: ReadonlyMap<string, string>;
   /** A per-event `events.keep` by declared FQN; null for a single rule. */
   readonly keepRules: KeepRules | null;
+  /** The handlers the project's `handlers` sections declare (`bindDomain`'s `handlers`); undefined without one. */
+  readonly section: SectionHandlers | undefined;
 }
 
 /** The parts of `binding` the deliverer reads (`deliverer.ts`); a `FrameworkError` for a value `bind()` did not make. */
 export function bindingParts(binding: Binding): BindingParts {
   const state = stateOf(binding);
-  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame, renamed: state.renamed, keepRules: state.keepRules };
+  return { layer: state.layer, events: state.events, config: state.options.events, frame: state.frame, renamed: state.renamed, keepRules: state.keepRules, section: state.sectionHandlers };
 }
 
 /**

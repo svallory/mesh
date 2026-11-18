@@ -55,6 +55,40 @@ export interface MetadataArguments<E extends object = object> {
  */
 export type MetadataFunction<E extends object = object> = (args: MetadataArguments<E>) => EventMetadata | Promise<EventMetadata>;
 
+/**
+ * The handlers the `.mesh.mx` files' `handlers` sections declare (section handlers), as the generated `bind` hands them to
+ * `bindDomain`: one record per core kind, each handler under its key `<owner FQN>.<name>` (`billing.Invoice.receipt`),
+ * and where each one is written. Core registers and delivers them as it does the events module's handlers.
+ */
+export interface SectionHandlers {
+  readonly process?: Readonly<Record<string, Handler>>;
+  readonly listen?: Readonly<Record<string, Handler>>;
+  /** Where each one is written, by key (`billing/invoice.mesh.mx:9:5`), for the start errors that name both sources. */
+  readonly at: Readonly<Record<string, string>>;
+}
+
+/**
+ * Merges the records the generated `<owner>.handlers.ts` files export (`$handlers`) into one, in list order. Keys are
+ * unique by construction (an owner's FQN and a name unique in its section), so a key two records hold can only come from
+ * a hand-edited generated file: a `FrameworkError`.
+ */
+export function mergeHandlers(list: readonly SectionHandlers[]): SectionHandlers {
+  const process: Record<string, Handler> = {};
+  const listen: Record<string, Handler> = {};
+  const at: Record<string, string> = {};
+  for (const handlers of list) {
+    for (const [kind, into] of [["process", process], ["listen", listen]] as const) {
+      for (const [key, handler] of Object.entries(handlers[kind] ?? {})) {
+        if (key in process || key in listen)
+          throw new FrameworkError(`Two handlers sections declare the handler ${key} (${at[key] ?? "unknown"} and ${handlers.at[key] ?? "unknown"}): a generated file was edited by hand; rebuild with mesh build`);
+        into[key] = handler;
+        at[key] = handlers.at[key] ?? "unknown";
+      }
+    }
+  }
+  return Object.freeze({ process: Object.freeze(process), listen: Object.freeze(listen), at: Object.freeze(at) });
+}
+
 /** The events module (`src/events.ts`), which `events.load` loads at run time and the build never imports. */
 export interface EventsModule {
   /** The handlers, by kind, each under its name: the name is unique across every kind and keys its progress row. */

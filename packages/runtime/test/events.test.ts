@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, FAILURES_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
-  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, runAction, type EventRecord, type HandlerKind,
+  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, mergeHandlers, runAction, type EventRecord, type HandlerKind,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { notifyPublished, onPublished } from "../src/events.ts";
@@ -912,6 +912,76 @@ describe("the async context a metadata function runs in (trace context in metada
       "from-handler": { trace: "handled 1" },
       "from-listener": { trace: "mailed 1" },
     });
+  });
+});
+
+describe("section handlers, handed to bindDomain (handlers design, H17 to H19)", () => {
+  // As the generated `bind` hands them: `mergeHandlers` of each owner's `$handlers`, keyed `<owner FQN>.<name>`.
+  const Invoice = entity("billing.Invoice", (layer, options, frame = NO_FRAME) => Object.freeze({
+    async pay(input: { readonly id: string }, context?: object) {
+      const clock = frame.clock(options.clock);
+      return runAction(layer, options.seams, { entity: "billing.Invoice", action: "pay" }, input, context, (tx) =>
+        frame.within(tx, clock, "billing.Invoice#pay", () =>
+          frame.plain(() => publishEvent(tx, options.events, { ...target, key: { id: input.id } }, paid(input.id), context ?? {}, clock))));
+    },
+  }), null, (call) => ({
+    pay(input: { readonly id: string }, ...context: [context?: object]): Promise<EventRecord> {
+      return call("pay", input, context);
+    },
+  }));
+  const frame = new AsyncLocalStorage<unknown>();
+  const seen: string[] = [];
+  const section = (renamed?: string) => mergeHandlers([
+    {
+      listen: { [renamed ?? "billing.Invoice.receipt"]: { events: [InvoicePaid], run: (event: EventRecord<InvoicePaid>, { context }: { context: object }) => { seen.push(`receipt ${event.payload.invoiceId} ${JSON.stringify(context)}`); }, ...(renamed ? { renamedFrom: "billing.Invoice.receipt" } : {}) } },
+      at: { [renamed ?? "billing.Invoice.receipt"]: "billing/invoice.mesh.mx:19:5" },
+    },
+    {
+      process: { "billing.Ledger.post": { events: [InvoicePaid], run: (event: EventRecord<InvoicePaid>) => { seen.push(`post ${event.payload.invoiceId} ${event.causedBy}`); } } },
+      at: { "billing.Ledger.post": "billing/ledger.mesh.mx:7:5" },
+    },
+  ] as never);
+
+  test("with no events.load, every binding that delivers registers them by key and runs each from now, the two owners' in one round", async () => {
+    const { layer, state } = memoryLayer({ delivery: true });
+    seen.length = 0;
+    const binding = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus(), keep: "all" }, clock }, frame, section());
+    await binding.run(() => Invoice.pay({ id: "before" }));
+    await binding.deliver();
+    expect(seen).toEqual([]);
+    await binding.run(() => Invoice.pay({ id: "a" }));
+    await binding.deliver();
+    expect(seen.sort()).toEqual(["post a null", 'receipt a {"system":true}']);
+    expect(state.rows.map((row) => row.name)).toEqual(["billing.InvoicePaid", "billing.InvoicePaid"]);
+  });
+
+  test("beside the events module's handlers, and a module handler with a section handler's key is MESH_HANDLER_OPTION at deliver()", async () => {
+    const { layer } = memoryLayer({ delivery: true });
+    seen.length = 0;
+    const module: EventsModule = { handlers: { listen: { log: Mesh.handler({ events: [InvoicePaid], run: (event) => { seen.push(`log ${event.payload.invoiceId}`); } }) } } };
+    const binding = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus(), load: async () => module }, clock }, frame, section());
+    await binding.deliver();
+    await binding.run(() => Invoice.pay({ id: "b" }));
+    await binding.deliver();
+    expect(seen.sort()).toEqual(["log b", "post b null", 'receipt b {"system":true}']);
+    const clash: EventsModule = { handlers: { process: { "billing.Ledger.post": Mesh.handler({ events: [InvoicePaid], run: () => undefined }) } } };
+    const other = bindDomain({ Invoice, InvoicePaid }, memoryLayer({ delivery: true }).layer, { events: { bus: testBus(), load: async () => clash }, clock }, frame, section());
+    const error = await rejection(() => other.deliver());
+    expect((error as MeshError).code).toBe("MESH_HANDLER_OPTION");
+    expect(error.message).toBe('The process handler "billing.Ledger.post" has the name of a process handler: a handler\'s name is unique across every kind, since it keys the handler\'s progress row (one in the events module, one in billing/ledger.mesh.mx:7:5)');
+  });
+
+  test("renamed-from moves a section handler's progress row to its new key: events published between the two runs are handled", async () => {
+    const { layer } = memoryLayer({ delivery: true });
+    seen.length = 0;
+    const first = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus() }, clock }, frame, section());
+    await first.deliver();
+    await first.run(() => Invoice.pay({ id: "c" }));
+    // Renamed before the row is handled: the new key takes the old row over, so it handles `c` (never from now).
+    seen.length = 0;
+    const renamed = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus() }, clock }, frame, section("billing.Invoice.mailReceipt"));
+    await renamed.deliver();
+    expect(seen.sort()).toEqual(["post c null", 'receipt c {"system":true}']);
   });
 });
 
