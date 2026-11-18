@@ -868,7 +868,7 @@ const AGGREGATE_PACKAGES: PackageRule = {
     : from === MESHFW_MIXINS ? MIXINS_PACKAGE
     : { message: `An aggregate file imports only ${meshExtensionsText} files: its handlers call actions of the entities it imports, not ${from === MESHFW ? "`Mesh`" : "a package"}`, fix: "remove the import" },
 };
-/** A file that takes no package; a surface file refuses every import but a `.mesh.mx` one before `fileImports` reads them. */
+/** A file that takes no package; a surface file refuses every import but one of another Mesh file before `fileImports` reads them. */
 const NO_PACKAGES: PackageRule = { paths: [], refusal: () => relativeOr([]) };
 
 /**
