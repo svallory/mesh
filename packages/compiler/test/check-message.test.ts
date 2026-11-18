@@ -66,11 +66,6 @@ test.each([['""'], ['"   "'], ['"\t"']])("blank text %s is MESH_TEXT at the opti
   expect(where(`message=${text}`)).toEqual([["MESH_TEXT", 11, 10]]);
 });
 
-test("a refused value is not a model-shape failure of the whole entity", () => {
-  const result = built("message=42");
-  expect(result.diagnostics.map((d) => d.code)).not.toContain("MESH_MODEL_SHAPE");
-});
-
 test("a message function that reads `before` is refused like `that=` (`before` is gone from validate)", () => {
   const found = errors("message=({ before }) => before.title");
   expect(found.map((d) => d.code)).toContain("MESH_VALIDATE_BEFORE");

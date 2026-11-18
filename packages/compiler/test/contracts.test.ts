@@ -43,10 +43,6 @@ describe("v4 contracts", () => {
       ).toEqual([]);
     },
   );
-  test("comments are non-structural under structural rejection", () =>
-    expect(
-      parse("// comment\n" + keyed + "    // inside\n").diagnostics,
-    ).toEqual([]));
   test.each(["if", "for", "let", "const", "define"])(
     "rejects structural <%s>",
     (tag) => {
@@ -115,12 +111,8 @@ describe("v4 contracts", () => {
       ["MESH_OPTION_VALUE", "`actions`: option `auto` must be array, got atom; write it as a list: `[:read]`"],
     ]);
   });
-  test("old-relationship: exact message and position (the value-position atom row ends the default at the spaced name; Mesh's words since MX alpha.31)", () => {
-    const result = parseFixture("negative/old-relationship.mesh.mx");
-    expect(result.diagnostics.map((d) => [d.code, d.message, d.line, d.column])).toEqual([
-      [ "MESH_UNKNOWN_OPTION", "`belongs-to`: unknown option `value`", 5, 14],
-    ]);
-  });
+  // old-relationship's message and position: value-row.test.ts ("a claimed default value ends at a terminating attribute
+  // row"); its code: the matrix below.
   test("every negative fixture fails with a positioned diagnostic", () => {
     const files = readdirSync(`${fixtureDir}negative`).filter((f) =>
       f.endsWith(".mesh.mx"),

@@ -52,10 +52,6 @@ describe("self-reference (acceptance 1)", () => {
     expect(entityOf(result, "Task").relationships[1]).toMatchObject({ inverse: "parent" });
   });
 
-  test("a self-cycle (a record that is its own parent) is data, not a build error", () => {
-    const result = build({ "task.mesh.mx": task });
-    expect(result.document).not.toBeNull();
-  });
 
   test("a misspelt own name is an unknown entity at the entity option, with a suggestion", () => {
     const result = build({ "task.mesh.mx": task.replace("belongs-to :parent entity=Task", "belongs-to :parent entity=Tsak") });

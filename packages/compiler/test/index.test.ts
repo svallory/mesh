@@ -334,8 +334,8 @@ describe("entity names never break the generated files", () => {
     expect(actions).toContain("async toString(");
     expect(actions).toContain("async constructor(");
     const message = ":__proto__ cannot be a member name: __proto__ sets an object's prototype instead of adding a property. Choose another name.";
+    // An attribute named __proto__: validators.test.ts, with its position, before any schema is emitted.
     for (const member of [
-      "  attributes\n    uuid :id primary-key\n    string :__proto__\n",
       "  attributes\n    uuid :id primary-key\n  actions\n    read :__proto__\n",
       "  attributes\n    uuid :id primary-key\n  policies\n    policy :__proto__\n      authorize-if=() => true\n",
       "  attributes\n    uuid :id primary-key\n  computed\n    string :__proto__() { return \"x\" }\n",

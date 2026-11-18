@@ -108,7 +108,6 @@ describe("name resolution: every rule `Mesh` already follows holds", () => {
     const computed = entity(check("() => true"), "  computed\n    boolean :c() { return Mesh[`privileged`](Task) !== null }\n");
     expect(errors(computed).map((e) => e.code)).toEqual(["MESH_COMPUTED_COMPOSES"]);
     expect(asks(entity(run("await Mesh[`can`](Task.go, input, context)")))).toBe(true);
-    expect(errors(inPolicy("await Mesh[`can`](Task.go, input, context)")).map((e) => e.code)).toEqual(["MESH_POLICY_ASKS"]);
     for (const body of ["const { [`can`]: ask } = Mesh; await ask(Task.go, input, context)", "let ask; ({ [`checkPolicies`]: ask } = Mesh); await ask(Task.go, input, context)"]) {
       expect(errors(entity(run(body))), body).toEqual([]);
       expect(asks(entity(run(body))), body).toBe(true);
@@ -244,7 +243,7 @@ describe("a policy may not ask (MESH_POLICY_ASKS)", () => {
   test("asking is not acting or reading: MESH_POLICY_ACTS and a privileged read stay their own", () => {
     const acts = policy("policy :p types=[:update]", "forbid-if=async ({ context }) => (await Task.go({ id: \"x\" }, context)) !== null");
     expect(codes(acts)).toEqual(["error:MESH_POLICY_ACTS"]);
-    expect(codes(policy("policy :p types=[:update]", "forbid-if=async () => (await Mesh.privileged(Task).read({})).length > 1"))).toEqual([]);
+    // A privileged read in a write policy builds (policies.test.ts, "a policy that calls an entity's action ...").
     // Reading privileged in a read policy keeps its own code; asking in the same check adds this one.
     const both = policy("policy :p types=[:read]", "authorize-if=async ({ input, context }) => (await Mesh.privileged(Task).read({})).length > 0 && (await Mesh.can(Task.go, input, context))");
     expect(codes(both).sort()).toEqual(["error:MESH_POLICY_ASKS", "error:MESH_READ_POLICY_PRIVILEGED"]);

@@ -599,7 +599,7 @@ test("Docs MX samples: removed vocabulary is an error, never deferred", () => {
     writeFileSync(join(dir, "old.md"), '```mx\nentity :Todo module="todo"\n```\n');
     const checked = checkDocsSamples(dir);
     expect(checked.parsed).toBe(1);
-    expect(checked.errors.join("\n")).toContain("module");
+    expect(checked.errors).toEqual(["old.md:1: MX block 1:14: `entity`: unknown option `module`"]);
   });
 });
 

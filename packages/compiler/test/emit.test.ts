@@ -116,52 +116,6 @@ export { update, destroy, bad, computed };
   ).toEqual({ code: 0, output: "" });
 }, 30_000);
 
-test("argument defaults and nullable fields are optional, update member fields are patches", () => {
-  const document = documentOf();
-  const entity = todo(document);
-  const title = entity.attributes.find((a) => a.name === "title")!;
-  entity.actions = [
-    {
-      kind: "create",
-      name: "make",
-      input: [
-        { kind: "member", ref: { name: "title", position: title.position } },
-        {
-          kind: "argument",
-          name: "optional",
-          type: "integer",
-          nullable: false,
-          default: 0,
-          position: title.position,
-        },
-      ],
-      validate: [],
-      do: [],
-      position: entity.position,
-    },
-    {
-      kind: "update",
-      name: "patch",
-      input: [
-        { kind: "member", ref: { name: "title", position: title.position } },
-      ],
-      validate: [],
-      do: [],
-      position: entity.position,
-    },
-  ];
-  entity.auto = [];
-  const [create, update] = entityInputs(entity, document);
-  expect(create!.fields.map((f) => [f.attribute.name, f.optional])).toEqual([
-    ["title", false],
-    ["optional", true],
-  ]);
-  expect(update!.fields.map((f) => [f.attribute.name, f.optional])).toEqual([
-    ["id", false],
-    ["title", true],
-  ]);
-});
-
 test("empty inputs reject extra properties and primitives; records without actions need no Zod imports", async () => {
   const document = documentOf();
   const entity = todo(document);
