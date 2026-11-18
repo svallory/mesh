@@ -26,16 +26,8 @@ test("sqlite() is one frozen value: the data adapter descriptor and its data lay
   expect("createSchema" in db).toBe(false);
 });
 
-test("making the descriptor opens no database, so a build can import mesh.config.ts freely", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mesh-descriptor-"));
-  try {
-    const db = sqlite({ file: join(dir, "app.db") });
-    expect(existsSync(db.options.file)).toBe(false);
-    await db.close();
-    expect(existsSync(db.options.file)).toBe(false);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
-});
-
+// That making the descriptor opens no file (a build imports mesh.config.ts freely) is `layer.test.ts`, "closing before
+// first use never opens a file".
 test.each(["", " ", undefined, null, 42])("rejects invalid SQLite file %j with a FrameworkError", (file) => {
   expect(() => sqlite({ file: file as string })).toThrow(FrameworkError);
   expect(() => sqlite({ file: file as string })).toThrow('sqlite requires a non-empty file; pass { file: ":memory:" } or a database path');
@@ -45,3 +37,23 @@ test("rejects missing options", () => {
   // SAFETY: deliberately crosses the typed boundary, as an untyped config would.
   expect(() => sqlite(undefined as never)).toThrow(FrameworkError);
 });
+
+// `DataLayer.database` is the deliverer's identity for a database (`runtime/src/data-layer.ts`): every layer object over
+// one file names it alike, however the path is spelled, and another file differently. Nothing is opened to name it.
+test("layers over one file share one database name, absolute; another file has its own", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mesh-descriptor-"));
+  try {
+    const file = join(dir, "app.db");
+    const one = sqlite({ file });
+    const same = sqlite({ file: join(dir, ".", "sub", "..", "app.db") });
+    const other = sqlite({ file: join(dir, "other.db") });
+    expect(one.database).toBe(file);
+    expect(same.database).toBe(one.database);
+    expect(other.database).not.toBe(one.database);
+    // A relative path names the file it resolves to from the working directory.
+    expect(sqlite({ file: "app.db" }).database).toBe(join(process.cwd(), "app.db"));
+    expect(sqlite({ file: "./app.db" }).database).toBe(sqlite({ file: "app.db" }).database);
+    expect(existsSync(file)).toBe(false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+

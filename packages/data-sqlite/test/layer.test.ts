@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,6 @@ import { sql } from "drizzle-orm";
 import { SQLiteSyncDialect, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { pgTable, text as pgText } from "drizzle-orm/pg-core";
 import { DatabaseBusyError, FrameworkError, type DataOperations } from "@meshfw/runtime";
-import { dataLayerConformance } from "@meshfw/runtime/testing";
 import { createSchema, sqlite } from "../src/index.ts";
 import { sqliteState, sqliteWith } from "../src/layer.ts";
 import { missingDrizzleKit, planSchemaPush } from "../src/push-schema.ts";
@@ -20,28 +19,9 @@ const table = sqliteTable("records", {
 });
 const sampleRow = { id: "00000000-0000-4000-8000-000000000001", title: "First", count: 17, score: 1.25, active: false,
   at: new Date("2026-01-01T00:00:00.123Z"), status: "draft", optional: null };
-const secondRow = { ...sampleRow, id: "00000000-0000-4000-8000-000000000002", title: "Second", active: true, optional: "present" };
 
-for (const kind of ["memory", "file"] as const) {
-  describe(`${kind} database conformance`, () => {
-    // A closed layer may be reopened (one check does), so the folders go after the suite.
-    const dirs: string[] = [];
-    afterAll(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-    const checks = dataLayerConformance(async () => {
-      const dir = kind === "file" ? mkdtempSync(join(tmpdir(), "mesh-sqlite-")) : undefined;
-      if (dir) dirs.push(dir);
-      const layer = sqlite({ file: dir ? join(dir, "test.db") : ":memory:" });
-      try { await createSchema(layer, { table }); }
-      catch (error) { await layer.close(); if (dir) rmSync(dir, { recursive: true, force: true }); throw error; }
-      return {
-        layer: { transaction: layer.transaction, refuseIfFailed: layer.refuseIfFailed, close: layer.close },
-        table, sampleRow, secondRow, key: { id: sampleRow.id }, secondKey: { id: secondRow.id },
-        changes: { title: "Changed", active: true, at: new Date("2026-02-01T00:00:00.456Z") },
-      };
-    });
-    for (const [name, check] of Object.entries(checks)) test(name, check);
-  });
-}
+// Contract v0's checks run in `contract.test.ts`, inside the v1 suite (`dataLayerConformanceV1` spreads them), over a
+// memory and a file database; every attribute type's round trip through this adapter is `emitted.test.ts`.
 
 async function withLayer(run: (layer: ReturnType<typeof sqlite>) => Promise<void>) {
   const layer = sqlite({ file: ":memory:" });
@@ -49,20 +29,11 @@ async function withLayer(run: (layer: ReturnType<typeof sqlite>) => Promise<void
   finally { await layer.close(); }
 }
 
-test("sqlite validates configuration and exposes frozen build metadata without opening a connection", async () => {
-  // SAFETY: invalid inputs deliberately exercise the JavaScript boundary.
-  for (const options of [undefined, {}, { file: "" }, { file: 1 }]) expect(() => sqlite(options as never)).toThrow(FrameworkError);
+// The descriptor's shape (frozen, its keys, a copy of its options, the refusal of a bad file) is `descriptor.test.ts`.
+test("a layer opens its file on first use, and close may be called again and before the next transaction", async () => {
   const dir = mkdtempSync(join(tmpdir(), "mesh-lazy-"));
   try {
-    const options = { file: join(dir, "lazy.db") };
-    const layer = sqlite(options);
-    options.file = ":memory:";
-    expect(layer.kind).toBe("data-adapter");
-    expect(layer.name).toBe("sqlite");
-    expect(layer.build).toBe("@meshfw/data-sqlite/build");
-    expect(Object.isFrozen(layer)).toBe(true);
-    expect(layer.options.file).toBe(join(dir, "lazy.db"));
-    expect(Object.isFrozen(layer.options)).toBe(true);
+    const layer = sqlite({ file: join(dir, "lazy.db") });
     expect(existsSync(layer.options.file)).toBe(false);
     await createSchema(layer, { table });
     expect(existsSync(layer.options.file)).toBe(true);

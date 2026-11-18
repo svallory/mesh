@@ -254,9 +254,14 @@ describe("a json value keeps the key when it also holds what z.json() refused", 
       const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic;
       const failure = await rejection(mesh.makeDoc({ title: "c", payload: cyclic }));
       expect(failure).not.toBeInstanceOf(InvalidInputError);
+      // The row comes back from storage, through JSON, so sharing is checked on the copy the action holds: its input.
       const shared = { x: 1 };
-      const row = await mesh.makeDoc({ title: "c", payload: { a: shared, b: shared } });
+      const seen: any[] = [];
+      const row = await mesh.makeDoc({ title: "c", payload: { a: shared, b: shared } }, { seen });
       expect(row.payload).toEqual({ a: { x: 1 }, b: { x: 1 } });
+      const copy = seen[0].input.payload;
+      expect(copy.a).not.toBe(shared);
+      expect(copy.a).toBe(copy.b);
     } finally { await db.close(); }
   });
 });
