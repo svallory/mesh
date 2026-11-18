@@ -69,12 +69,21 @@ describe("atoms in every position", () => {
   test("a second `:name` is the duplicate rule (a warning, last wins), not a parse error", () => {
     const result = lower("<div :a :b/>");
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]).toMatchObject({ severity: "warning" });
+    expect(result.diagnostics[0]).toMatchObject({ severity: "warning", code: "MESH_DUPLICATE_OPTION" });
+    // The later name is the declaration's name (`mesh-syntax.md`, the name slot).
+    const line = lower("string :a :b\n");
+    expect(line.diagnostics.map((d) => [d.code, d.column])).toEqual([["MESH_DUPLICATE_OPTION", 7]]);
+    const tag = line.ir?.body.find((each) => each.kind === "DelegatedTag");
+    if (tag?.kind !== "DelegatedTag") throw new Error("no tag");
+    expect(tag.tag.attrs.filter((each) => each.kind !== "spread" && each.name === "name")).toMatchObject([{ kind: "static", value: "b", node: { type: "mesh:Atom", name: "b" } }]);
   });
 
   test("the combined dialect keeps the member rows beside the atom rows", () => {
     const tag = firstTag("sort asc &dueOn :n x=[&a, :b]\n");
-    expect(attr(tag, "member")).toMatchObject({ kind: "static", value: "dueOn" });
+    // A member after a boolean attribute: the static member variant, never the expression form, at its own span.
+    expect(attr(tag, "asc")).toMatchObject({ kind: "boolean", nameSpan: { sourceStart: 5, sourceEnd: 8 } });
+    expect(attr(tag, "member")).toMatchObject({ kind: "static", value: "dueOn", span: { sourceStart: 9, sourceEnd: 15 },
+      node: { type: "mesh:Member", name: "dueOn", span: { sourceStart: 9, sourceEnd: 15 } } });
     expect(attr(tag, "name")).toMatchObject({ kind: "static", value: "n", node: { type: "mesh:Atom", name: "n" } });
     const x = attr(tag, "x");
     if (x.kind !== "dynamic") throw new Error(x.kind);

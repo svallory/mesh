@@ -302,6 +302,22 @@ describe("type rules", () => {
     expect(codes(entity(check("() => !&ok")))).toEqual([]);
     expect(codes(entity(check("() => &m < 3")))).toEqual([]);
   });
+  // `expressions.md` (Forms) plans a second parameter as an error (`MESH_EXPRESSION`, planned in `errors.md`); what the
+  // compiler does today is make the function plain with the reason `unsupported-parameter`, silently. Pinned so the
+  // day the planned error lands this test fails and is rewritten with it.
+  test("a parameter form that is not one destructure of scope roots is plain code, `unsupported-parameter`, with no diagnostic", () => {
+    for (const that of ["({ self }, extra) => &n > 0", "(s) => &n > 0", "({ other }) => &n > 0", "({ [\"self\"]: s }) => &n > 0"]) {
+      expect(codes(entity(check(that))), that).toEqual([]);
+      const e = exprOf(entity(check(that)));
+      expect(e.tree, that).toBeUndefined();
+      expect(e.plain, that).toMatchObject({ why: "unsupported-parameter" });
+    }
+    // The legal neighbours: no parameter, and one destructure of scope roots (renamed or not), translate.
+    for (const that of ["() => &n > 0", "({ self }) => self.n > 0", "({ self, actor }) => &n > 0", "({ self: s }) => s.n > 0"]) {
+      expect(codes(entity(check(that))), that).toEqual([]);
+      expect(exprOf(entity(check(that))).tree, that).toBeDefined();
+    }
+  });
   test("constructs the registry cannot define stay plain with JavaScript meaning, and warn (D3, D4)", () => {
     for (const that of ["() => !&title", "() => &title < \"m\"", "() => &state > :open", "() => &ok < true", "() => &n == 1", "() => &title + \"x\" === \"y\"", "() => &title.startsWith(\"a\") === true"]) {
       const e = exprOf(entity(check(that)));

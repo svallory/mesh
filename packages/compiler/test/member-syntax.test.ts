@@ -1,6 +1,6 @@
-// The `&` member shapes through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/member-syntax.test.ts`
-// at MX commit 750c80ec1; Mesh owns the member row now): in an expression, after a kind, on a tagless line, and the
-// cases that must not be members. The "dialect package" loader is covered by `dialect-registration.test.ts`.
+// The `&` member row through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/member-syntax.test.ts`
+// at MX commit 750c80ec1; Mesh owns the member row now): the member child's trigger and value, the cases that must not
+// be members, members in tag and attribute arguments, and one member per slot. The "dialect package" loader is covered by `dialect-registration.test.ts`.
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned, SpannedIr } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
@@ -48,92 +48,10 @@ function nodesAt(expression: { nodes?: readonly { type: string; span: unknown; n
   return (expression.nodes ?? []).filter((each) => each.forward === forward).map((each) => ({ type: each.type, span: each.span, node: each.node }));
 }
 
-describe("the five Mesh cases", () => {
-  test("`() => &status === :sent`: a `mesh:Member` whose forward is `self.status`, the atom unchanged", () => {
-    const source = "rule check=(() => &status === :sent)\n";
-    const [rule] = tags(ir(source).body);
-    const check = exprOf(rule as SpannedTag, "check");
-    // `code` is spliced, like the atom; the span still slices the authored text.
-    expect(check.code).toBe('() => self.status === "sent"');
-    expect(source.slice(12, 35)).toBe("() => &status === :sent");
-    expect(check.span).toEqual({ sourceStart: 12, sourceEnd: 35 });
-    expect(check.node).toMatchObject({
-      type: "ArrowFunctionExpression",
-      body: {
-        type: "BinaryExpression",
-        left: {
-          type: "MemberExpression",
-          object: { type: "Identifier", name: "self" },
-          property: { type: "Identifier", name: "status" },
-        },
-        right: { type: "StringLiteral", value: "sent" },
-      },
-    });
-    const { left, right } = (check.node as unknown as { body: { left: object; right: object } }).body;
-    expect(left).not.toHaveProperty("extra");
-    expect(right).not.toHaveProperty("extra.mxAtom");
-    expect(nodesAt(check, left)).toMatchObject([
-      { type: "mesh:Member", span: { sourceStart: 18, sourceEnd: 25 }, node: { type: "mesh:Member", name: "status", span: { sourceStart: 18, sourceEnd: 25 } } },
-    ]);
-    expect(nodesAt(check, right)).toMatchObject([{ type: "mesh:Atom", span: { sourceStart: 30, sourceEnd: 35 } }]);
-  });
-
-  test("`load=[&customer, &other]`: an array of members", () => {
-    const [rule] = tags(
-      ir("rule load=[&customer, &other]\n").body,
-    );
-    const value = exprOf(rule as SpannedTag, "load");
-    expect(value.shape).toBe("array");
-    expect(value.node).toMatchObject({
-      type: "ArrayExpression",
-      elements: [
-        { type: "MemberExpression", property: { name: "customer" } },
-        { type: "MemberExpression", property: { name: "other" } },
-      ],
-    });
-    const [customer, other] = (value.node as unknown as { elements: object[] }).elements;
-    expect(nodesAt(value, customer)).toMatchObject([{ type: "mesh:Member", span: { sourceStart: 11, sourceEnd: 20 }, node: { name: "customer" } }]);
-    expect(nodesAt(value, other)).toMatchObject([{ type: "mesh:Member", span: { sourceStart: 22, sourceEnd: 28 }, node: { name: "other" } }]);
-  });
-
-  test("`sort asc &dueOn`: the static member variant, never the expression form", () => {
-    const [sort] = tags(ir("sort asc &dueOn\n").body);
-    expect((sort as SpannedTag).attrs).toMatchObject([
-      {
-        kind: "boolean",
-        name: "asc",
-        nameSpan: { sourceStart: 5, sourceEnd: 8 },
-      },
-      {
-        // A whole-value member is a `static` attribute carrying the `mesh:Member` node.
-        kind: "static",
-        name: "member",
-        value: "dueOn",
-        node: {
-          type: "mesh:Member",
-          name: "dueOn",
-          span: { sourceStart: 9, sourceEnd: 15 },
-        },
-        span: { sourceStart: 9, sourceEnd: 15 },
-      },
-    ]);
-  });
-
-  test("`&title`: a `member` child with a static `name`", () => {
-    const [entity] = tags(ir("entity\n  &title\n").body);
-    const [member] = tags((entity as SpannedTag).children);
-    expect(member?.name).toBe("member");
-    expect(member?.attrs).toMatchObject([
-      {
-        kind: "static",
-        name: "name",
-        value: "title",
-        nameSpan: { sourceStart: 9, sourceEnd: 15 },
-        valueSpan: { sourceStart: 10, sourceEnd: 15 },
-      },
-    ]);
-  });
-
+// The tree shapes themselves (an expression member, an array of members, `asc &dueOn` under `sort`, a tagless `&title`)
+// are pinned once, in `syntax.test.ts`, and the one-line `sort asc &dueOn` with its spans in `atoms-sugars-syntax.test.ts`;
+// this file keeps what those do not assert.
+describe("the member child's trigger and value", () => {
   test("`&title`: the child carries `trigger` (id, span, text); an authored `<member>` has none", () => {
     const source = 'entity\n  &title\n  <member name="x"/>\n';
     const [entity] = tags(ir(source).body);

@@ -10,23 +10,9 @@ import { join } from "node:path";
 import { buildModel, meshDiagnostic, otherFileResolver, parseEntitySource, relationshipValueFix, staticFileFix, type MxDiagnostic, type OtherFile } from "../src/front-end/build.ts";
 import { build, keyed } from "./v4.ts";
 
+// That an MX code arrives under its Mesh name (an unknown tag, an unknown option) is pinned in `diagnostic-codes.test.ts`,
+// beside the control that proves the rename.
 describe("MX codes arrive as Mesh's", () => {
-  test("an unknown tag in an entity file is MESH_UNKNOWN_TAG, positioned at the tag", () => {
-    const result = buildModel({ root: "/project", files: [{ file: "todo.mesh.mx", source: "entity :Todo\n  mystery :x\n" }] });
-    expect(result.document).toBeNull();
-    expect(result.diagnostics).toEqual([
-      expect.objectContaining({ severity: "error", code: "MESH_UNKNOWN_TAG", position: expect.objectContaining({ file: "todo.mesh.mx", line: 2, column: 2 }) }),
-    ]);
-  });
-
-  test.each([
-    ["an unknown option", keyed + "    boolean :ok min=0\n", "MESH_UNKNOWN_OPTION"],
-  ])("%s has Mesh's name for MX's code", (_, source, code) => {
-    const found = build(source).diagnostics;
-    expect(found.length).toBeGreaterThan(0);
-    expect(found[0]!.code).toBe(code);
-  });
-
   test("no diagnostic MX reports for a Mesh source reaches the MESH_SYNTAX fallback", () => {
     for (const source of ["entity :T\n  mystery\n", "let x\n", "entity :T\n  attributes\n    string :a min=\n", "entity\n"]) {
       for (const d of parseEntitySource(source, "t.mesh.mx").diagnostics) expect(d.code, d.message).toBeString();

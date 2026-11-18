@@ -262,6 +262,19 @@ describe("the daemon", () => {
     expect(existsSync(socket)).toBe(false);
   }, TIMEOUT_MS);
 
+  // The third exit of the signal handler (`exitOnSignal`): closing failed, so the process says so and exits 1.
+  test("SIGTERM exits 1 and says so when closing the daemon fails", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([TEST_DAEMON, socket, db], { MESH_TEST_CLOSE_FAILS: "1" });
+    await engine.ready();
+    const { code, ms } = await engine.stop();
+    expect(code).toBe(1);
+    expect(ms).toBeLessThan(STOP_MS);
+    expect(engine.err()).toContain("the daemon did not close cleanly");
+    expect(engine.err()).toContain("planted close failure");
+    expect(engine.out()).toBe("READY\n");
+  }, TIMEOUT_MS);
+
   test("SIGTERM exits 0 within 5 seconds even with a call in flight that never settles", async () => {
     const { socket, db } = scratch();
     // A 100 ms grace, in place of the real 4 s, through the fixture's MESH_TEST_GRACE_MS: the grace exit itself is the
@@ -429,13 +442,10 @@ describe("the daemon", () => {
     const late = Date.parse(history.claims[0].endedAt) - expiresAt;
     expect(late).toBeGreaterThanOrEqual(0);
     expect(late).toBeLessThanOrEqual(1_000);
-
-    for (const method of ["claim.renew", "claim.release"]) {
-      const { error } = await client.call(method, command(owner, { taskId: task, fence: acquired.claim.fence }));
-      expect(error).toMatchObject({ code: -32003, data: { phase: "content", failures: [{ check: "claim.expired" }] } });
-    }
-    const again = await client.call("claim.acquire", command(owner, { taskId: task }));
-    expect(again.result?.claim).toMatchObject({ fence: acquired.claim.fence + 1, state: "active" });
+    // What follows an expiry (renew and release refused `claim.expired`, the next claim gets fence + 1) is the conformance
+    // gate's, on the same daemon path: `conformance/cases/05-claims.test.ts`, "--lease-ms sets the lease" and "expiry
+    // happens without any traffic on the Task". This test keeps what only it checks: the 1000 ms bound, measured, and
+    // the stored Claim row and Task version.
     client.close();
     expect((await engine.stop()).code).toBe(0);
   }, TIMEOUT_MS);

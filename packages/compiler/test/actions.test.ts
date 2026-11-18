@@ -568,6 +568,50 @@ describe("explain", () => {
       "               afterCommit: once, after the outermost transaction commits, with every change it made",
     ].join("\n"));
   });
+  // `actions.md`: from an `always` block with neither `types=` nor `actions=`, a destroy skips the `set` and `load` steps
+  // (it has no row to change); the block's checks still apply to it. The generated code and `mesh explain` agree.
+  test("a scopeless always block's checks apply to a destroy and its set step does not; a create runs both", async () => {
+    const note = `entity :Note table="notes"
+  attributes
+    uuid :id primary-key
+    string :title
+    integer :edits default=0
+  actions auto=[:read]
+    always
+      validate
+        check :untouched that=() => &edits < 100 code="locked" message="locked"
+      do
+        set
+          &edits=() => 41
+    create :add
+      input
+        &title
+    destroy :remove
+  policies
+    policy :open
+      authorize-if=() => true
+`;
+    const document = documentOf({ "x/note.mesh.mx": note });
+    const entity = document.entities[0]!;
+    // The lines from `checks` up to the seams.
+    const lines = (name: string) => {
+      const all = explainAction(entity, name)!;
+      return all.slice(all.findIndex((line) => line.startsWith("  checks")), all.findIndex((line) => line.startsWith("  seams")));
+    };
+    expect(lines("remove")).toEqual(["  checks       always: untouched (locked)", "  steps        none"]);
+    expect(lines("add")).toEqual(["  checks       always: untouched (locked)", "  steps        set &edits = () => 41"]);
+    const rendered = (await generateFiles(inputOf(document))).find((each) => each.path.endsWith("x/note.actions.ts"))!.contents;
+    // Each action's method, up to the next one.
+    const body = (name: string) => {
+      const start = rendered.indexOf(`    async ${name}(input`);
+      expect(start, name).toBeGreaterThan(-1);
+      return rendered.slice(start, rendered.indexOf("\n    async ", start + 1));
+    };
+    expect(body("remove")).toContain('$expressions["always.0.check.untouched.that"]');
+    expect(body("remove")).not.toContain("always.0.step.0.set.edits");
+    expect(body("add")).toContain('$expressions["always.0.check.untouched.that"]');
+    expect(body("add")).toContain('$expressions["always.0.step.0.set.edits"]');
+  });
   test("an update with no check still reads first", () => {
     expect(explainAction(article_(), "rename")![1]).toContain("read-then-write");
   });

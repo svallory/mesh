@@ -114,3 +114,21 @@ test("round 2 M1: temporary names skip produced paths and never overwrite an exi
     expect(await fs.readFile(join(config.output, `.mesh-${second}.tmp`), "utf8")).toBe("unrelated collision");
   } finally { uuid.mockRestore(); }
 });
+
+test("the writer refuses a path that is not project-relative, or that resolves outside the output directory, before writing anything", async () => {
+  const config = await project();
+  for (const [path, message] of [
+    ["../outside.txt", 'Cannot write the generated file "../outside.txt": it is not a project-relative path'],
+    ["/outside.txt", 'Cannot write the generated file "/outside.txt": it is not a project-relative path'],
+    ["elsewhere/outside.txt", 'Cannot write the generated file "elsewhere/outside.txt": it resolves outside the output directory "generated"'],
+  ] as const) {
+    let error: unknown;
+    try { await writeGeneratedFiles([...files, { path, contents: "rogue" }], config); } catch (cause) { error = cause; }
+    expect(error, path).toBeInstanceOf(Error);
+    expect(error, path).not.toBeInstanceOf(EmitError);
+    expect((error as Error).message, path).toBe(message);
+  }
+  // Refused in the preflight: not even the legal files before it were written.
+  expect(await fs.readdir(config.output)).toEqual([]);
+  expect(await fs.readdir(config.root)).toEqual(["generated"]);
+});

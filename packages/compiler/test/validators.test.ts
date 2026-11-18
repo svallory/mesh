@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -10,6 +10,12 @@ import {
   writeGeneratedFiles,
 } from "../src/typescript/emit.ts";
 import { VALIDATOR_TYPES } from "../src/typescript/views/validators.ts";
+// The repository's one copy of the compiler options: the `tsc` binary once (the CLI path), the shared in-memory server
+// for the mutation loop.
+import { checkTypes, checkTypesBinary } from "./generated.ts";
+import { closeTypeServer } from "./type-server.ts";
+
+afterAll(closeTypeServer);
 interface StandardSchemaV1 {
   "~standard": {
     validate(
@@ -80,38 +86,6 @@ async function emitted(text = source) {
   >;
   return { root, files, validator, schemas };
 }
-function check(root: string, files: string[]) {
-  const child = Bun.spawnSync(
-    [
-      resolve(import.meta.dir, "../../../node_modules/.bin/tsc"),
-      "--ignoreConfig",
-      "--noEmit",
-      "--strict",
-      "--noUncheckedIndexedAccess",
-      "--module",
-      "esnext",
-      "--moduleResolution",
-      "bundler",
-      "--target",
-      "es2022",
-      "--skipLibCheck",
-      "--noUnusedLocals",
-      "--noUnusedParameters",
-      "--exactOptionalPropertyTypes",
-      "--verbatimModuleSyntax",
-      "--isolatedModules",
-      // The generated actions import @meshfw/runtime, whose sources import with `.ts`.
-      "--allowImportingTsExtensions",
-      ...files,
-    ],
-    { cwd: root },
-  );
-  return {
-    code: child.exitCode,
-    output: child.stdout.toString() + child.stderr.toString(),
-  };
-}
-
 test("v4 validators enforce member types, enum values and string/numeric rules through Standard Schema", async () => {
   const { schemas } = await emitted();
   const validate = (input: unknown) =>
@@ -182,7 +156,7 @@ test("generated validators and all ten scalar mappings typecheck with exact opti
   await writeFile(resolve(out.root, "generated/schema.ts"), "export const tables = { post: {} };\n");
   await writeFile(resolve(out.root, "mesh.config.ts"), "export default { data: { kind: \"data-adapter\", name: \"memory\", build: \"./none\", options: {} } };\n");
   expect(
-    check(
+    checkTypesBinary(
       out.root,
       [...out.files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path), "generated/schema.ts", "mesh.config.ts"],
     ),
@@ -217,7 +191,7 @@ test("validator drift tripwires catch keys, requiredness, nullability and scalar
       resolve(plain.root, plain.validator.path),
       plain.validator.contents.replace(from!, to!),
     );
-    const result = check(
+    const result = await checkTypes(
       plain.root,
       plain.files.filter((f) => f.path.endsWith(".ts")).map((f) => f.path),
     );

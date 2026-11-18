@@ -1,9 +1,8 @@
-// Mesh's v4 reference file through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX
-// commit 750c80ec1; Mesh owns the syntax now): atoms and the name sugar as layer-2 triggers plus the `&` member rows. The shapes
-// the front end reads: a whole-value atom is a `static` attribute carrying a `mesh:Atom` `node`, an atom inside an expression a
-// `mesh:Atom` in `Expr.nodes` whose forward is a `StringLiteral`, a member a `static` attribute carrying a `mesh:Member` `node`
-// or a `mesh:Member` in `Expr.nodes` whose forward is `self.name`. Core sets no mark on a forward (MX 0.1.0-alpha.34). The
-// "dialect package" loader is covered by `dialect-registration.test.ts`.
+// `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX commit 750c80ec1; Mesh owns the
+// syntax now): Mesh's v4 reference file lowers clean, a diagnostic in it names no file, line heads under `tagShorthands:
+// false`, the transaction row, and the prefix operators, `await` and conditionals around a marked operand. The lowered
+// shapes are pinned elsewhere (see the first describe). The "dialect package" loader is covered by
+// `dialect-registration.test.ts`.
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
@@ -72,87 +71,16 @@ function attr(tag: SpannedTag, name: string): SpannedAttr {
 }
 
 describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
-  function parsed() {
+  // Every v4 form once, lowered clean. The member and atom shapes are pinned in `syntax.test.ts` (shapes 1 to 4), value
+  // rows in `value-row.test.ts`, the combined dialect in `atoms-sugars-syntax.test.ts`. The method-form sugar
+  // (`boolean :isOverdue() { … }`), a member with an atom value (`&status=:sent`) and `on:load=&visible` are pinned only
+  // through the corpus golden in `mesh-corpus.test.ts`.
+  test("lowers with no diagnostic", () => {
     const result = lowerSource(INVOICE, "/v/invoice.mesh.mx", { dialect: SYNTAX_DIALECT, ...BASE });
     expect(result.diagnostics).toEqual([]);
-    return result.ir as NonNullable<typeof result.ir>;
-  }
-
-  test("a declaration's name is a whole-value atom", () => {
-    const ir = parsed();
-    expect(attr(find(ir.body, "entity"), "name")).toMatchObject({
-      kind: "static",
-      value: "Invoice",
-      node: { type: "mesh:Atom", name: "Invoice" },
-    });
-    expect(attr(find(ir.body, "uuid"), "name")).toMatchObject({
-      kind: "static",
-      value: "id",
-      node: { type: "mesh:Atom", name: "id" },
-    });
-  });
-
-  test("atoms in expressions are marked string literals", () => {
-    const ir = parsed();
-    const status = find(ir.body, "enum");
-    expect(attr(status, "default")).toMatchObject({
-      kind: "static",
-      value: "draft",
-      node: { type: "mesh:Atom", name: "draft" },
-    });
-    const values = attr(status, "values");
-    if (values.kind !== "dynamic") throw new Error(values.kind);
-    expect(values.value.node).toMatchObject({
-      type: "ArrayExpression",
-      elements: [
-        { type: "StringLiteral", value: "draft" },
-        { type: "StringLiteral", value: "sent" },
-        { type: "StringLiteral", value: "paid" },
-      ],
-    });
-    const elements = (values.value.node as unknown as { elements: object[] }).elements;
-    expect(values.value.nodes?.map((each) => [each.type, elements.indexOf(each.forward as object)])).toEqual([
-      ["mesh:Atom", 0],
-      ["mesh:Atom", 1],
-      ["mesh:Atom", 2],
-    ]);
-  });
-
-  test("`:name` then a method is the name and the default value, members inside", () => {
-    const overdue = find(parsed().body, "boolean");
-    expect(attr(overdue, "name")).toMatchObject({
-      kind: "static",
-      value: "isOverdue",
-      node: { type: "mesh:Atom", name: "isOverdue" },
-    });
-    const value = attr(overdue, "value");
-    if (value.kind !== "dynamic") throw new Error(value.kind);
-    const types = new Set(value.value.nodes?.map((each) => each.type));
-    expect(types).toEqual(new Set(["mesh:Member", "mesh:Atom"]));
-  });
-
-  test("members after a kind, on a tagless line and in a value", () => {
-    const ir = parsed();
-    expect(attr(find(ir.body, "asc"), "member")).toMatchObject({
-      kind: "static",
-      value: "dueOn",
-      node: { type: "mesh:Member", name: "dueOn" },
-    });
-    const member = find(find(ir.body, "set").children, "member");
-    expect(attr(member, "name")).toMatchObject({ value: "status" });
-    expect(attr(member, "value")).toMatchObject({
-      kind: "static",
-      value: "sent",
-      node: { type: "mesh:Atom", name: "sent" },
-    });
-    const load = find(ir.body, "actions").attrs.find(
-      (each) => each.kind !== "spread" && each.name.startsWith("on"),
-    );
-    if (load?.kind !== "dynamic") throw new Error(load?.kind);
-    expect(load.value.nodes?.map((each) => each.type)).toContain("mesh:Member");
+    expect(result.ir).toBeDefined();
   });
 });
-
 
 describe("a diagnostic in the parsed file has no `file` (it names only another file)", () => {
   const SOURCES = ["enum values=[::x]\n", "<x :a:b/>", "<y x=(/>", "entity :A\n  <for of=[1]|x|>\n  </for>\n"];
@@ -165,16 +93,6 @@ describe("a diagnostic in the parsed file has no `file` (it names only another f
   });
 });
 
-describe("what Mesh's dialect does not read", () => {
-  // MX's reference module also carried the `#id` and `.class` shorthand rows; Mesh's copy drops them.
-  test("`#` and `.` are no trigger rows", () => {
-    const rows = SYNTAX_DIALECT.table.attributeTriggers ?? [];
-    expect(rows.map((row) => row.id)).toEqual(["name", "member"]);
-    expect((SYNTAX_DIALECT.table.expressionTriggers ?? []).map((row) => row.id)).toEqual(["atom", "member", "transaction"]);
-    expect((SYNTAX_DIALECT.table.lineTriggers ?? []).map((row) => row.id)).toEqual(["member"]);
-  });
-});
-
 // MX 0.1.0-alpha.28: Mesh's syntax table sets `tagShorthands: false`, so a line head has no `#id` or `.class` shorthand and no
 // implicit `div`. A `.` continues the tag name (`billing.InvoiceVoided` is one tag); a `#` anywhere in a head, or a
 // head that starts with `.`, is `MESH_NO_TAG_SHORTHAND` at that character; an empty part of a dotted name is
@@ -183,10 +101,6 @@ describe("line heads under tagShorthands: false", () => {
   const entity = (head: string) => `entity :T\n  attributes\n    uuid :id primary-key\n  ${head}\n`;
   const built = (source: string) =>
     buildModel({ root: "/project", files: [{ file: "t/t.mesh.mx", source }] }).diagnostics.map((d) => [d.severity, d.code, d.position.line, d.position.column]);
-
-  test("the dialect turns the shorthands off", () => {
-    expect(SYNTAX_DIALECT.table.tagShorthands).toBe(false);
-  });
 
   test("`#x`, `.x` and a `#` inside a head are MESH_NO_TAG_SHORTHAND at the `#` or the leading `.`", () => {
     for (const [head, at] of [["#x", 0], [".x", 0], ["a#b", 1], ["billing.Invoice#x", 15], ["a#", 1]] as const)

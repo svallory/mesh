@@ -543,6 +543,22 @@ describe("the execution entities' permissions (no conformance group; Hyper's `ru
     expect((await Run.cancel({ id: run.id, reason: "stop" }, as(w.bot))).state).toBe("canceled");
   }));
 
+  test("run.start makes the Task's assignee responsible, not the starter; the responsible collaborator may cancel", () => within(async (w) => {
+    // Alice, an owner, assigns the Task to Bot (Alice is the delegator) and starts the run on it.
+    await Task.assign({ id: w.task.id, assignee: w.bot.id }, as(w.alice));
+    const run = await Run.start({ task: w.task.id }, as(w.alice));
+    expect(run).toMatchObject({ responsibleId: w.bot.id, startedById: w.alice.id });
+    // Bob is neither owner, responsible, starter nor delegator.
+    expect(await deniedBy(Run.cancel({ id: run.id, reason: "stop" }, as(w.bob)))).toEqual(["runCanceler"]);
+    // Bot is responsible, and neither the starter, the delegator nor an owner.
+    expect((await Run.cancel({ id: run.id, reason: "stop" }, as(w.bot))).state).toBe("canceled");
+  }));
+
+  test("with no assignee the starter is responsible", () => within(async (w) => {
+    const run = await Run.start({ task: w.task.id }, as(w.alice));
+    expect(run).toMatchObject({ responsibleId: w.alice.id, startedById: w.alice.id });
+  }));
+
   test("a claim holder demoted to guest cannot start an attempt (ownerOrMember on Attempt :start)", () => within(async (w) => {
     await Claim.acquire({ task: w.task.id }, as(w.bot));
     const run = await Run.start({ task: w.task.id }, as(w.bot));
