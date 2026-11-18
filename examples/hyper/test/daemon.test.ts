@@ -294,6 +294,24 @@ describe("the daemon", () => {
     client.close();
   }, TIMEOUT_MS);
 
+  test("a second signal while it is stopping changes nothing: one grace exit, code 0, never the default kill", async () => {
+    const { socket, db } = scratch();
+    const engine = launch([TEST_DAEMON, socket, db], { MESH_TEST_GRACE_MS: "500" });
+    await engine.ready();
+    const client = await connect(socket);
+    void client.call("test.hang", {});
+    await engine.logged("test.hang is running");
+    engine.proc.kill("SIGTERM");
+    await Bun.sleep(100);
+    // A second SIGTERM: had the first one removed the handler, this one would take the default action and kill it.
+    const { code, ms } = await engine.stop("SIGTERM");
+    expect([code, engine.proc.signalCode]).toEqual([0, null]);
+    expect(ms).toBeLessThan(STOP_MS);
+    expect(engine.err().split(GRACE_EXIT)).toHaveLength(2);
+    expect(engine.err()).toContain(`${GRACE_EXIT} 500 ms after SIGTERM`);
+    client.close();
+  }, TIMEOUT_MS);
+
   test("a signal while it is still starting waits for start-up to finish, then closes, exits 0 and removes the socket", async () => {
     const { socket, db } = scratch();
     const engine = launch([TEST_DAEMON, socket, db, "500"]);

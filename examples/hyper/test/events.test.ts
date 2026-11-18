@@ -221,6 +221,13 @@ describe("events.read (PROTOCOL.md §5)", () => {
     expect(await readPage({ after: top })).toEqual({ events: [], cursor: top, hasMore: false });
   }));
 
+  test("with no limit, a page holds at most 100 events (DEFAULT_LIMIT)", () => onEngine(async ({ owner }) => {
+    while ((await head()) < 105) await Task.create({ title: "Filler" }, as(owner));
+    const page = await readPage({ after: 0 });
+    expect(page.events.map((event) => event.seq)).toEqual(Array.from({ length: 100 }, (_, i) => i + 1));
+    expect(page).toMatchObject({ cursor: 100, hasMore: true });
+  }));
+
   test("types keeps the named types, an unknown type matches nothing, and the cursor still passes what was filtered", () => onEngine(async ({ owner }) => {
     await Task.create({ title: "One" }, as(owner));
     const top = await head();
