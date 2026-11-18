@@ -592,8 +592,11 @@ export interface MultiProcessOperations {
 /** What `DataLayer.transaction` takes beside its callback. */
 export interface TransactionOptions {
   /**
-   * How long to wait for another connection's write lock, in all, in milliseconds, in place of the adapter's default.
-   * Core's claim renewal passes the 15 s lapse; nothing else sets it. On Postgres it bounds each lock wait.
+   * How long to wait for another connection's write lock, in milliseconds, in place of the adapter's default, counted
+   * from when the transaction reaches the front of the layer's queue (not from the call). On SQLite it bounds the wait in
+   * all; on Postgres it bounds each lock wait (`lock_timeout`), so a transaction that takes several locks can wait
+   * several times over. Core sets it for the claim and process-row renewals (the time left until the lapse) and for a
+   * multi-process tick's lease work (the time left until the next renewal is due).
    */
   readonly waitMs?: number;
 }

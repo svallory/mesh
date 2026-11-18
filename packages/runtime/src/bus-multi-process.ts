@@ -326,7 +326,9 @@ export function multiProcessChecks(
    * on a server the rows it locked, such as mesh_outbox_state and a progress row), so every other process waits for it.
    * A short transaction that takes the locks a takeover takes tells; until one goes through, resume it and try again. On a
    * server a statement the worker sent before it stopped still runs and may take its locks once the probe ends, so the
-   * probe must go through twice.
+   * probe must go through twice. A probe waits briefly: a lock the stopped worker holds is never released, so a short
+   * wait tells as well as a long one, and the probe runs in this process's transaction queue, where each millisecond it
+   * waits delays this process's own renewal (a 150 ms wait there, behind a round's 100 ms one, let its row lapse).
    */
   const pause = async (ctx: Ctx, worker: MultiProcessWorker) => {
     const free = (tx: DataOperations) => (async () => {
@@ -337,7 +339,7 @@ export function multiProcessChecks(
     for (let attempt = 0; attempt < 50; attempt++) {
       worker.kill("SIGSTOP");
       await sleep(10);
-      const probe = () => ctx.layer.transaction(free, { waitMs: 150 }).catch(() => false);
+      const probe = () => ctx.layer.transaction(free, { waitMs: 30 }).catch(() => false);
       if (await probe() && (await sleep(20), await probe())) return;
       worker.kill("SIGCONT");
       await sleep(15 + attempt);
@@ -609,6 +611,70 @@ export function multiProcessChecks(
     await ctx.layer.transaction((tx) => ops(tx).deleteProcess(runId));
     await until(() => lost !== undefined, "the next renewal");
     assert(lost instanceof DelivererLostError && /a renewal of this process's row updated no row|this process's row in mesh_delivery_process lapsed or is gone/.test(lost.message), String(lost));
+  });
+
+  /**
+   * A process kept waiting on a stalled peer's locks, as this process sees it: while `stalling` is on, a lock-taking read
+   * that `stall` names waits as long as its transaction lets it (`waitMs`), at most the stall `stall` returns, and fails as
+   * a lock wait. Each such wait holds this layer's queue, which the renewal waits in. h is moved to another live process
+   * row first, so every tick's lease work tries to take it back. Once `stalling` is off and that row has lapsed, the
+   * lease work must take h, so the check also fails when lease work stops for good.
+   */
+  const stalledPeer = async (ctx: Ctx, stall: (read: "state" | "progress", name?: string) => number | undefined) => {
+    let stalling = false;
+    const stalled = (waitMs: number | undefined, ms: number) => async (): Promise<never> => {
+      const waited = Math.min(waitMs ?? ms, ms);
+      await sleep(waited);
+      throw new DatabaseBusyError(ctx.layer.database ?? "the test database", waited, { reason: "lock-timeout" });
+    };
+    const layer: DataLayer = Object.freeze({
+      ...ctx.layer,
+      transaction: ((run, options) => ctx.layer.transaction((tx) => {
+        if (!stalling) return run(tx);
+        const multi = tx as DataOperations & MultiProcessOperations;
+        const state = stall("state");
+        return run({
+          ...tx,
+          ...(state === undefined ? {} : { lockDeliveryState: stalled(options?.waitMs, state) }),
+          lockHandlerProgress: (name: string) => {
+            const ms = stall("progress", name);
+            return ms === undefined ? multi.lockHandlerProgress(name) : stalled(options?.waitMs, ms)();
+          },
+        } as DataOperations);
+      }, options)) as DataLayer["transaction"],
+    });
+    let lost: unknown;
+    const { domain, module } = scenario("old-list", layer, () => {});
+    const binding = bindDomain(domain, layer, { events: { bus: watched(ctx.bus, (core) => { core.onClaimLost((error) => { lost = error; }); }), keep: "until-delivered", load: async () => module } }, ctx.frame);
+    await ctx.start(binding);
+    const runId = (await ownRunId(ctx))!;
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha"]);
+    const lease = (await ctx.lease("h"))!;
+    await again(() => ctx.layer.transaction((tx) => ops(tx).writeHandlerLease({ ...lease, runId: OTHER, generation: lease.generation + 1 })));
+    await sleep(100);
+    stalling = true;
+    await sleep(2500);
+    stalling = false;
+    assert(lost === undefined, `five lapse times of stalled lock waits lost nothing, got ${String(lost)}`);
+    const row = (await again(() => ctx.layer.transaction((tx) => ops(tx).readProcesses()))).find((each) => each.runId === runId);
+    assert(row !== undefined, "this process's row is still there");
+    await until(async () => (await ctx.lease("h"))?.runId === runId, "this process took h once the other process's row lapsed");
+    assert(lost === undefined, `the instance was not lost afterwards, got ${String(lost)}`);
+  };
+
+  // Every wait under half the lapse. Before the fix the next renewal was scheduled after the lease work, so the renewal
+  // period was 30 ms plus the nil-claim transaction's stall, and the renewal and that transaction each also queued behind
+  // a round's stall: up to 30 + 3 x 220 against the 500 ms lapse, and the instance was lost. Now the renewal is
+  // scheduled first and queues behind at most one round's stall and one capped lease-work wait: about 30 + 220 + 30.
+  add("lock waits under half the lapse, in a tick's lease work and in the rounds, do not lose the instance, and the lease work recovers once they end", { timing: { renewMs: 30, lapseMs: 500 } }, async (ctx) => {
+    await stalledPeer(ctx, () => 220);
+  });
+
+  // The nil-claim transaction goes through and the take of h waits: only h's progress row is stalled, which no round
+  // locks (this process does not hold h). A take whose wait the next renewal's time did not cap would hold the queue for
+  // a whole second, twice the lapse, with the renewal behind it.
+  add("a tick's take waits for a lock no longer than the next renewal is due, so a long lock wait there does not lose the instance", { timing: { renewMs: 30, lapseMs: 500 } }, async (ctx) => {
+    await stalledPeer(ctx, (read, name) => (read === "progress" && name === "h" ? 1000 : undefined));
   });
 
   add("the two modes never deliver one database together: a live single-mode claim refuses a multi start, and the nil claim a single-mode start", { timing: IN_PROCESS }, async (ctx) => {
