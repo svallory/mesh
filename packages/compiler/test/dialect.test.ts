@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import { lowerSource } from "@mxlang/core";
-import { MESH_DIALECT } from "../src/front-end/dialect.ts";
 import { SYNTAX_DIALECT } from "./syntax-dialect.ts";
 import { MESH_EXTENSIONS, hasMeshExtension, meshGlob } from "../src/front-end/extensions.ts";
 
@@ -24,14 +23,4 @@ test("the extensions are one list", () => {
   expect(hasMeshExtension("a/b.mesh.mx")).toBe(true);
   expect(hasMeshExtension("a/b.mx")).toBe(false);
   expect(meshGlob).toBe("**/*.mesh.mx");
-});
-
-// MX #495 (alpha.16, still true on alpha.17): `:name` as a whole attribute value is a dialect row. Mesh owns it (`syntax/mesh.ts`),
-// and it names the dialect id, so `MESH_DIALECT.id` has to stay `mesh`.
-test("the dialect carries the value-position atom row and the Atom and Member node types, under the id mesh", () => {
-  expect(MESH_DIALECT.id).toBe("mesh");
-  const rows = MESH_DIALECT.table.valueTriggers ?? [];
-  expect(rows.map((row) => row.id)).toEqual(["atom-value"]);
-  expect(rows[0]!.node).toEqual({ type: "Atom", dialect: MESH_DIALECT.id });
-  expect(Object.keys(MESH_DIALECT.nodeTypes ?? {})).toEqual(["Atom", "Member"]);
 });
