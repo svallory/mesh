@@ -223,7 +223,7 @@ describe("roadmap M8 acceptance tests on Hyper", () => {
 describe("group 02.1: guests", () => {
   test("02:13 a guest cannot send work commands (role)", () => within(async (w) => {
     const guest = await join(w, "Gail", "guest");
-    expect(await deniedBy(Task.create({ title: "not allowed" }, as(guest)))).toEqual(["ownerOrMember"]);
+    // Task.create as a guest: test (1) above.
     expect(await deniedBy(Claim.acquire({ task: w.task.id }, as(guest)))).toEqual(["ownerOrMember"]);
     expect(await deniedBy(EvidenceReference.record({ kind: "link", locator: "https://example.com" }, as(guest)))).toEqual(["ownerOrMember"]);
   }));

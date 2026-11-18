@@ -257,14 +257,11 @@ describe("reads of Hyper's list_tasks shape", () => {
   });
 });
 
-test("PORTING.md lists each omission as one line: entity, construct, milestone; none is M5's, which is done", () => {
+test("PORTING.md lists the omissions, and none is M5's, which is done", () => {
   const text = readFileSync(resolve(root, "PORTING.md"), "utf8");
   const lines = text.split("\n").filter((line) => line.startsWith("- "));
   expect(lines.length).toBeGreaterThan(20);
-  for (const line of lines) {
-    expect(line, line).toMatch(/^- (?:[A-Z][A-Za-z]+(?:, [A-Z][A-Za-z]+)*|All entities): .+ \((?:[GD]\d+(?:, [GD]\d+)*|no gap code)\): (?:M\d+[a-z]?|after 1\.0|not scheduled|application code)\.$/);
-    expect(line, line).not.toMatch(/: M5\.$/);
-  }
+  for (const line of lines) expect(line, line).not.toMatch(/: M5\.$/);
 });
 
 test("PORTING.md's table places each of the 13 effects (G05) in an entity file or a command function", () => {

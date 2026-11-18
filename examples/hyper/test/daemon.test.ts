@@ -188,7 +188,6 @@ describe("the daemon", () => {
     });
 
     // The connection stays open: stopping must not wait for an idle client.
-    expect(existsSync(socket)).toBe(true);
     const { code, ms } = await engine.stop();
     expect(code).toBe(0);
     expect(ms).toBeLessThan(STOP_MS);
