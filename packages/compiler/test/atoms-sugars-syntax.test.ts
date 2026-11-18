@@ -80,7 +80,10 @@ describe("atoms in every position", () => {
 
   test("the combined dialect keeps the member rows beside the atom rows", () => {
     const tag = firstTag("sort asc &dueOn :n x=[&a, :b]\n");
-    expect(attr(tag, "member")).toMatchObject({ kind: "static", value: "dueOn" });
+    // A member after a boolean attribute: the static member variant, never the expression form, at its own span.
+    expect(attr(tag, "asc")).toMatchObject({ kind: "boolean", nameSpan: { sourceStart: 5, sourceEnd: 8 } });
+    expect(attr(tag, "member")).toMatchObject({ kind: "static", value: "dueOn", span: { sourceStart: 9, sourceEnd: 15 },
+      node: { type: "mesh:Member", name: "dueOn", span: { sourceStart: 9, sourceEnd: 15 } } });
     expect(attr(tag, "name")).toMatchObject({ kind: "static", value: "n", node: { type: "mesh:Atom", name: "n" } });
     const x = attr(tag, "x");
     if (x.kind !== "dynamic") throw new Error(x.kind);

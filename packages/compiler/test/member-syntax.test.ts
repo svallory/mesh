@@ -1,6 +1,6 @@
-// The `&` member shapes through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/member-syntax.test.ts`
-// at MX commit 750c80ec1; Mesh owns the member row now): in an expression, after a kind, on a tagless line, and the
-// cases that must not be members. The "dialect package" loader is covered by `dialect-registration.test.ts`.
+// The `&` member row through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/member-syntax.test.ts`
+// at MX commit 750c80ec1; Mesh owns the member row now): the member child's trigger and value, the cases that must not
+// be members, members in tag and attribute arguments, and one member per slot. The "dialect package" loader is covered by `dialect-registration.test.ts`.
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned, SpannedIr } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
@@ -48,8 +48,9 @@ function nodesAt(expression: { nodes?: readonly { type: string; span: unknown; n
   return (expression.nodes ?? []).filter((each) => each.forward === forward).map((each) => ({ type: each.type, span: each.span, node: each.node }));
 }
 
-// The four tree shapes themselves (an expression member, an array of members, `sort asc &dueOn`, a tagless `&title`) are
-// pinned once, in `syntax.test.ts`; this file keeps what that one does not assert.
+// The tree shapes themselves (an expression member, an array of members, `asc &dueOn` under `sort`, a tagless `&title`)
+// are pinned once, in `syntax.test.ts`, and the one-line `sort asc &dueOn` with its spans in `atoms-sugars-syntax.test.ts`;
+// this file keeps what those do not assert.
 describe("the member child's trigger and value", () => {
   test("`&title`: the child carries `trigger` (id, span, text); an authored `<member>` has none", () => {
     const source = 'entity\n  &title\n  <member name="x"/>\n';

@@ -1,9 +1,8 @@
-// Mesh's v4 reference file through `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX
-// commit 750c80ec1; Mesh owns the syntax now): atoms and the name sugar as layer-2 triggers plus the `&` member rows. The shapes
-// the front end reads: a whole-value atom is a `static` attribute carrying a `mesh:Atom` `node`, an atom inside an expression a
-// `mesh:Atom` in `Expr.nodes` whose forward is a `StringLiteral`, a member a `static` attribute carrying a `mesh:Member` `node`
-// or a `mesh:Member` in `Expr.nodes` whose forward is `self.name`. Core sets no mark on a forward (MX 0.1.0-alpha.34). The
-// "dialect package" loader is covered by `dialect-registration.test.ts`.
+// `lowerSource` with `SYNTAX_DIALECT` (ported from MX's `ir-entry/mesh-syntax.test.ts` at MX commit 750c80ec1; Mesh owns the
+// syntax now): Mesh's v4 reference file lowers clean, a diagnostic in it names no file, line heads under `tagShorthands:
+// false`, the transaction row, and the prefix operators, `await` and conditionals around a marked operand. The lowered
+// shapes are pinned elsewhere (see the first describe). The "dialect package" loader is covered by
+// `dialect-registration.test.ts`.
 import type { Attr, DelegatedTag, LowerSourceOptions, Spanned } from "@mxlang/core";
 import { lowerSource } from "@mxlang/core";
 import { describe, expect, test } from "bun:test";
@@ -72,8 +71,10 @@ function attr(tag: SpannedTag, name: string): SpannedAttr {
 }
 
 describe("Mesh's v4 reference file through SYNTAX_DIALECT", () => {
-  // Every v4 form once, lowered clean. The shapes it lowers to are pinned once in `syntax.test.ts`, and the whole
-  // corpus's lowering by the golden in `mesh-corpus.test.ts`.
+  // Every v4 form once, lowered clean. The member and atom shapes are pinned in `syntax.test.ts` (shapes 1 to 4), value
+  // rows in `value-row.test.ts`, the combined dialect in `atoms-sugars-syntax.test.ts`. The method-form sugar
+  // (`boolean :isOverdue() { … }`), a member with an atom value (`&status=:sent`) and `on:load=&visible` are pinned only
+  // through the corpus golden in `mesh-corpus.test.ts`.
   test("lowers with no diagnostic", () => {
     const result = lowerSource(INVOICE, "/v/invoice.mesh.mx", { dialect: SYNTAX_DIALECT, ...BASE });
     expect(result.diagnostics).toEqual([]);
