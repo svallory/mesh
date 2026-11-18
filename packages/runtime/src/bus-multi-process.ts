@@ -326,7 +326,9 @@ export function multiProcessChecks(
    * on a server the rows it locked, such as mesh_outbox_state and a progress row), so every other process waits for it.
    * A short transaction that takes the locks a takeover takes tells; until one goes through, resume it and try again. On a
    * server a statement the worker sent before it stopped still runs and may take its locks once the probe ends, so the
-   * probe must go through twice.
+   * probe must go through twice. A probe waits briefly: a lock the stopped worker holds is never released, so a short
+   * wait tells as well as a long one, and the probe runs in this process's transaction queue, where each millisecond it
+   * waits delays this process's own renewal (a 150 ms wait there, behind a round's 100 ms one, let its row lapse).
    */
   const pause = async (ctx: Ctx, worker: MultiProcessWorker) => {
     const free = (tx: DataOperations) => (async () => {
@@ -337,7 +339,7 @@ export function multiProcessChecks(
     for (let attempt = 0; attempt < 50; attempt++) {
       worker.kill("SIGSTOP");
       await sleep(10);
-      const probe = () => ctx.layer.transaction(free, { waitMs: 150 }).catch(() => false);
+      const probe = () => ctx.layer.transaction(free, { waitMs: 30 }).catch(() => false);
       if (await probe() && (await sleep(20), await probe())) return;
       worker.kill("SIGCONT");
       await sleep(15 + attempt);
@@ -609,6 +611,42 @@ export function multiProcessChecks(
     await ctx.layer.transaction((tx) => ops(tx).deleteProcess(runId));
     await until(() => lost !== undefined, "the next renewal");
     assert(lost instanceof DelivererLostError && /a renewal of this process's row updated no row|this process's row in mesh_delivery_process lapsed or is gone/.test(lost.message), String(lost));
+  });
+
+  add("lock waits in a tick's lease work and in the rounds do not delay the renewals: a process kept waiting on a stalled peer's locks stays live", { timing: { renewMs: 30, lapseMs: 300 } }, async (ctx) => {
+    // A stalled peer, in this process's view: every statement that locks mesh_outbox_state or a progress row waits as
+    // long as its transaction lets it (STALL without a wait of its own, under half the lapse) and fails as a lock wait.
+    // Each one holds this layer's queue, which the renewal waits in. Scheduled after the lease work, a renewal came
+    // 30 ms plus 140 (the nil claim) plus 140 (the take of h) after the last, past the lapse, and the instance was lost.
+    const STALL = 140;
+    let stalling = false;
+    const stalled = (waitMs: number | undefined) => async (): Promise<never> => {
+      const waited = Math.min(waitMs ?? STALL, STALL);
+      await sleep(waited);
+      throw new DatabaseBusyError(ctx.layer.database ?? "the test database", waited, { reason: "lock-timeout" });
+    };
+    const layer: DataLayer = Object.freeze({
+      ...ctx.layer,
+      transaction: ((run, options) => ctx.layer.transaction((tx) => run(stalling
+        ? { ...tx, lockDeliveryState: stalled(options?.waitMs), lockHandlerProgress: stalled(options?.waitMs) } as DataOperations
+        : tx), options)) as DataLayer["transaction"],
+    });
+    let lost: unknown;
+    const { domain, module } = scenario("old-list", layer, () => {});
+    const binding = bindDomain(domain, layer, { events: { bus: watched(ctx.bus, (core) => { core.onClaimLost((error) => { lost = error; }); }), keep: "until-delivered", load: async () => module } }, ctx.frame);
+    await ctx.start(binding);
+    const runId = (await ownRunId(ctx))!;
+    // h moves to another live process, so each tick's lease work also tries to take it back (and waits there too).
+    await ctx.writeFake(OTHER, { h: ["multi.Alpha"] }, ["multi.Alpha"]);
+    const lease = (await ctx.lease("h"))!;
+    await again(() => ctx.layer.transaction((tx) => ops(tx).writeHandlerLease({ ...lease, runId: OTHER, generation: lease.generation + 1 })));
+    await sleep(100);
+    stalling = true;
+    await sleep(1500);
+    stalling = false;
+    assert(lost === undefined, `five lapse times of stalled lease work and rounds lost nothing, got ${String(lost)}`);
+    const row = (await again(() => ctx.layer.transaction((tx) => ops(tx).readProcesses()))).find((each) => each.runId === runId);
+    assert(row !== undefined, "this process's row is still there");
   });
 
   add("the two modes never deliver one database together: a live single-mode claim refuses a multi start, and the nil claim a single-mode start", { timing: IN_PROCESS }, async (ctx) => {

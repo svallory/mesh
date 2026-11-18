@@ -1,7 +1,7 @@
 import type { EventBus, RegisteredHandler } from "./bus.ts";
 import type {
   DataLayer, DataOperations, DeliveryOperations, DeliveryProcessRow, DeliveryState, HandlerLeaseRow, HandlerProgressRow, LockedDeliveryState,
-  MultiProcessOperations, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow,
+  MultiProcessOperations, OutboxRow, SubscriptionFilter, SubscriptionOwnerRow, SubscriptionProgressRow, TransactionOptions,
 } from "./data-layer.ts";
 import {
   NIL_RUN_ID, PID, RENEW_RETRY_MS, RUN_ID, STARTED_AT, filterTakes, handlerStart, holderOf, lapsed, moveFailures, operations, registrationOf, renamedFilter, timing,
@@ -135,6 +135,8 @@ export class MultiClaim implements ClaimStrategy {
   readonly #unheld = new Map<string, number>();
   #handlers: readonly RegisteredHandler[] | undefined;
   #renewal: ReturnType<typeof setTimeout> | undefined;
+  /** A tick's lease work while it runs: a tick that comes meanwhile only renews. */
+  #leaseWork: Promise<void> | undefined;
   #halted = true;
 
   constructor(readonly deliverer: Deliverer) {}
@@ -248,12 +250,14 @@ export class MultiClaim implements ClaimStrategy {
   /**
    * Take every lease this process may take (rule L2), one transaction per handler: a handler it registers, not held, not
    * waiting for a rename, not yielded under the union it has now, whose row names no holder, a lapsed or absent process
-   * row, or this process's own run id. A take raises the row's generation by one. `only` limits it to one handler.
+   * row, or this process's own run id. A take raises the row's generation by one. `only` limits it to one handler;
+   * `until` (a tick's) bounds each take's lock wait, and no take starts after it.
    */
-  async #takeLeases(only?: string): Promise<void> {
+  async #takeLeases(only?: string, until?: number): Promise<void> {
     for (const name of this.#registered.keys()) {
       if (only !== undefined && name !== only) continue;
       if (!this.#active()) return;
+      if (until !== undefined && Date.now() >= until) return;
       // A take of this handler already running (register's, a tick's, resumeHandler's) is not repeated: two would both
       // raise the generation, and the first one's held generation would no longer match the row.
       if (this.#held.has(name) || this.#renames.has(name) || this.#taking.has(name)) continue;
@@ -279,7 +283,7 @@ export class MultiClaim implements ClaimStrategy {
           const generation = row.generation + 1;
           await ops.writeHandlerLease({ ...row, runId: RUN_ID, generation });
           return generation;
-        });
+        }, until === undefined ? undefined : { waitMs: Math.max(1, until - Date.now()) });
         if (taken !== undefined && this.#active()) {
           this.#held.set(name, taken);
           this.#handlers = undefined;
@@ -299,7 +303,8 @@ export class MultiClaim implements ClaimStrategy {
    * transient error that is not a lock wait until the lapse, as single mode renews the claim; then, in one transaction
    * that locks `mesh_outbox_state`, renew or rewrite the nil claim (a live claim of another run id loses the instance),
    * drop the leases no longer held, clear the yielded ones that still name this process, refresh the snapshots; then move
-   * the renames that no live process blocks any more, and take the free leases.
+   * the renames that no live process blocks any more, and take the free leases. The next tick is scheduled once the
+   * renewal succeeded, not once the lease work ended, and that work waits for no lock past the next renewal's time.
    */
   async tick(): Promise<void> {
     const deliverer = this.deliverer;
@@ -332,22 +337,41 @@ export class MultiClaim implements ClaimStrategy {
         if (!deliverer.holding || !this.#active()) return;
       }
     }
+    // The next renewal is due `renewMs` after this one, whatever the lease work below waits for. Scheduled after the
+    // lease work, a renewal came `renewMs` plus every lock wait of that work late, and then queued behind this layer's
+    // other transactions (one at a time): a process stalled inside a transaction (paused, swapped out) made the live
+    // ones wait on its locks until their own rows lapsed, and they stopped with MESH_DELIVERER_LOST instead of taking
+    // its handlers over.
+    this.#schedule();
+    if (this.#leaseWork) return;
+    const work = this.#leases(deliverer.renewedAt + timing.renewMs);
+    this.#leaseWork = work;
+    try { await work; } finally { this.#leaseWork = undefined; }
+  }
+
+  /**
+   * The lease work of a tick (rules P5, L6, R7), each transaction waiting for a lock at most until `until`, when the
+   * next renewal is due, so that the renewal never queues behind it; what it could not do the next tick does.
+   */
+  async #leases(until: number): Promise<void> {
+    const within = (): TransactionOptions => ({ waitMs: Math.max(1, until - Date.now()) });
     try {
-      await this.#afterRenewal();
-      for (const [name, former] of [...this.#renames]) await this.#moveRenamed(name, former);
-      await this.#takeLeases();
+      await this.#afterRenewal(within());
+      for (const [name, former] of [...this.#renames]) {
+        if (Date.now() >= until) return;
+        await this.#moveRenamed(name, former, within());
+      }
+      await this.#takeLeases(undefined, until);
     } catch (error) {
       if (!this.#active()) return;
       // A lock wait here is not a miss of the renewal itself: the next tick does it again.
       if (!(error instanceof DatabaseBusyError)) {
-        deliverer.lose(`a renewal of this process's leases failed: ${error instanceof Error ? error.message : String(error)}`);
-        return;
+        this.deliverer.lose(`a renewal of this process's leases failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    if (deliverer.holding && this.#active()) this.#schedule();
   }
 
-  async #afterRenewal(): Promise<void> {
+  async #afterRenewal(options: TransactionOptions): Promise<void> {
     await this.deliverer.layer.transaction(async (tx) => {
       const ops = multiOperations(tx);
       const state = await ops.lockDeliveryState();
@@ -371,7 +395,7 @@ export class MultiClaim implements ClaimStrategy {
           if (locked?.runId === RUN_ID) await ops.writeHandlerLease({ ...locked, runId: null });
         }
       }
-    });
+    }, options);
   }
 
   /** The nil claim check of a renewal: a live claim of another run id means a single-mode process claims the database. */
@@ -382,7 +406,7 @@ export class MultiClaim implements ClaimStrategy {
   }
 
   /** A `renamedFrom` move that waited for the former name's live registrations to end (rule R7). */
-  async #moveRenamed(name: string, former: string): Promise<void> {
+  async #moveRenamed(name: string, former: string, options?: TransactionOptions): Promise<void> {
     const entry = this.#declared.get(name);
     if (!entry) return;
     const logs = await this.deliverer.layer.transaction(async (tx) => {
@@ -413,7 +437,7 @@ export class MultiClaim implements ClaimStrategy {
       await ops.writeHandlerLease({ ...start.row, events, generation: (own ?? formerRow)?.generation ?? 0, runId: own?.runId ?? null });
       this.#unions.set(name, events);
       return start.logs;
-    });
+    }, options);
     if (logs === undefined) return;
     this.#renames.delete(name);
     for (const line of logs) console.info(line);
