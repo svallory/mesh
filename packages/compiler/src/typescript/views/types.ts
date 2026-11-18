@@ -21,7 +21,9 @@ import {
   sortTypeName,
   typeName,
   valueType,
+  type FieldShape,
   type PlannedField,
+  type RelatedItems,
 } from "./inputs.ts";
 
 /**
@@ -198,7 +200,7 @@ export function typesView({ document }: EmitInput, entity: Entity): TypesView {
         type: `${tsTypeOf(relation.keyType ?? "string")}${relation.nullable ? " | null" : ""}`,
       });
   // Each concept a member holds, imported as a type under its FQN-derived local (`$Money$concept`).
-  const concepts = conceptImports(document, conceptsUsed([...entity.attributes, ...inputs.flatMap((input) => input.fields.filter(({ query }) => !query).map(({ attribute }) => attribute))]), `${entityPath(entity)}.types`);
+  const concepts = conceptImports(document, conceptsUsed([...entity.attributes, ...inputs.flatMap((input) => [...input.fields.filter(({ query, related }) => !query && !related).map(({ attribute }) => attribute), ...relatedAttributes(input.fields)])]), `${entityPath(entity)}.types`);
   for (const concept of concepts) imports.push({ name: concept.type.split(" as ")[1]!, names: concept.type, fromLiteral: concept.fromLiteral });
   const view = {
     entityFile: entityFileComment(entity),
@@ -289,9 +291,27 @@ function declaration(name: string, generics: string, members: TypeMember[]): Typ
   return { name, generics, empty: members.length === 0, members };
 }
 
-function member({ attribute, optional, reference, query }: PlannedField, entity: Entity, locals: Locals): TypeMember {
+/**
+ * The list a `relate` adds, printed inline: `readonly ({ id: string; name?: string | undefined } | { name: string; id?:
+ * undefined })[]`, the keyed item, then the new item with no key (absent without `create=`). Each object is printed from
+ * the planned fields, a `belongs-to` as its key's type, so nothing of the target's types file is imported.
+ */
+function relatedType(related: RelatedItems): string {
+  const object = (fields: readonly PlannedField[], extra: string[] = []) =>
+    `{ ${[...fields.map(({ attribute, optional }) => `${propertyName(attribute.name)}${optional ? "?" : ""}: ${valueType(attribute)}${optional ? " | undefined" : ""}`), ...extra].join("; ")} }`;
+  const items = [object(related.keyed), ...(related.fresh ? [object(related.fresh, [`${propertyName(related.key.name)}?: undefined`])] : [])];
+  return `readonly (${items.join(" | ")})[]`;
+}
+
+/** The attributes the inline item types of an input's related lists hold, for the concepts a file imports. */
+export function relatedAttributes(fields: readonly PlannedField[]): FieldShape[] {
+  return fields.flatMap(({ related }) => (related ? [...related.keyed, ...(related.fresh ?? [])].map(({ attribute }) => attribute) : []));
+}
+
+function member({ attribute, optional, reference, query, related }: PlannedField, entity: Entity, locals: Locals): TypeMember {
   const type = query
     ? query === "filter" ? filterTypeName(entity) : query === "sort" ? sortTypeName(entity) : query === "load" ? "readonly N[]" : "number"
+    : related ? relatedType(related)
     : reference
     ? `${locals(reference).record}[${JSON.stringify(reference.attributes.find((a) => a.primaryKey)!.name)}]${attribute.nullable ? " | null" : ""}`
     : valueType(attribute);

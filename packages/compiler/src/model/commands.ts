@@ -42,8 +42,11 @@ function inputsOf(entity: Entity, action: Action): ActionInput[] {
     inputs.push({ name, shape: value, required: !optional, what: `\`${name}\`` });
   }
   // The fields a step adds (`expectedVersion` for `lock &version`) are input like the written ones.
+  // A relate's list fits no command field: its shape is unknown (`null`), which the type check skips, and it is optional.
   for (const field of derivedInputs(entity, action))
-    inputs.push({ name: field.name, shape: { type: "integer", nullable: field.nullable }, required: field.required, what: `\`${field.name}\`, which \`lock &${field.step.member.name}\` adds` });
+    inputs.push(field.source === "lock"
+      ? { name: field.name, shape: { type: "integer", nullable: field.nullable }, required: field.required, what: `\`${field.name}\`, which \`lock &${field.step.member.name}\` adds` }
+      : { name: field.name, shape: null, required: false, what: `\`${field.name}\`, which \`relate &${field.step.relationship.name}\` adds` });
   return inputs;
 }
 

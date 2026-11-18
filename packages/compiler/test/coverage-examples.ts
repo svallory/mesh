@@ -109,6 +109,8 @@ export function coverageProject(tag: string, option: string | undefined, example
     ...(answers ? [{ file: "docs/paid.mesh.mx", source: `command :Paid\n${tag === "create" ? "" : "  uuid :id\n"}` }] : []),
     ...(tie ? [{ file: "docs/tie.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nimport { Line } from "./line.mesh.mx"\nentity :Tie\n  attributes\n    uuid :id primary-key\n  relationships\n    belongs-to :sample entity=Sample\n    belongs-to :line entity=Line\n  actions auto=[:read]\n' }] : []),
     { file: "docs/sample.mesh.mx", source: paid + (tie ? 'import { Tie } from "./tie.mesh.mx"\n' : "") + 'import { Line } from "./line.mesh.mx"\n' + render(root) },
-    { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n  relationships\n    belongs-to :owner entity=Sample nullable\n  actions auto=[:read]\n' },
+    // A relate names Line's actions: a create that takes the inverse `&owner`, an update and a destroy.
+    { file: "docs/line.mesh.mx", source: 'import { Sample } from "./sample.mesh.mx"\nentity :Line\n  attributes\n    uuid :id primary-key\n    decimal :amount\n    date :dueOn\n  relationships\n    belongs-to :owner entity=Sample nullable\n  actions auto=[:read]\n'
+      + (tag === "relate" ? "    create :add\n      input\n        &owner\n        &amount\n        &dueOn\n    update :rename\n      input\n        &amount\n    destroy :remove\n" : "") },
   ] };
 }

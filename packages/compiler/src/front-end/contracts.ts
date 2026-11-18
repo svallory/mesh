@@ -192,7 +192,7 @@ const options = (type: string) => ({
   // The builder refuses either on a line with none of the three (`checkRuleText` in `build.ts`).
   ...(["string", "integer", "float", "decimal"].includes(type) ? { message: text(), code: text() } : {}),
 });
-const steps = children("set", "when", "load", "run", "publish", "lock");
+const steps = children("set", "when", "load", "run", "publish", "lock", "relate");
 const body = { validate: {}, do: {} };
 /** The action types that take `validate` and `do`. A read writes nothing, so it has no step to run and no write for a check to guard: its contract leaves both out, and either under a read is `MESH_TAG_NOT_ALLOWED`. */
 const WRITE_TYPES = ACTION_TYPES.filter((type) => type !== "read");
@@ -574,6 +574,13 @@ const contracts: ContractMap = {
   lock: closed({
     parents: ["do", "when"],
     attributes: { member: member(true), optional: flag() },
+  }),
+  // `relate &tracks create=:add update=:rename destroy=:remove`: the rows of a has-many from the caller's list (ADR-0100).
+  // Each option names an action of the target entity; the builder requires at least one and refuses one under a step
+  // `when` or in an `always` block (`MESH_RELATE_STEP`), and `checkLockRelate` resolves the names.
+  relate: closed({
+    parents: ["do", "when"],
+    attributes: { member: member(true), create: atom(), update: atom(), destroy: atom() },
   }),
   filter: closed({ parents: ["read"], attributes: { value: fn(true) } }),
   sort: closed({ parents: ["read"], children: children("asc", "desc") }),

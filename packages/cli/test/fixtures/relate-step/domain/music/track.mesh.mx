@@ -1,0 +1,35 @@
+import { Album } from "./album.mesh.mx"
+entity :Track
+  attributes
+    uuid :id primary-key
+    string :name min=1
+    boolean :hidden default=false
+  relationships
+    belongs-to :album entity=Album
+  actions auto=[:read]
+    create :add
+      input
+        &name
+        &album
+      validate
+        check :notBad that=({ input }) => input.name !== "bad" code="bad-name" message="a track cannot be called bad"
+    create :addHidden
+      input
+        &name
+        &album
+      do
+        set
+          &hidden=true
+    update :rename
+      input
+        &name
+    destroy :remove
+  policies
+    policy :visible types=[:read]
+      authorize-if=() => !&hidden
+    policy :writes types=[:create, :update, :destroy]
+      forbid-if=({ context }) => context.deny ?? false
+      authorize-if=() => true
+    policy :named types=[:create]
+      forbid-if=({ input }) => input.name === "forbidden"
+      authorize-if=() => true

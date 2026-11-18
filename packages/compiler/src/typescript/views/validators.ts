@@ -1,9 +1,9 @@
 import type { AttributeType, Entity } from "@meshfw/model";
 import { conceptImports, type ConceptImport } from "./concepts.ts";
 import type { EmitInput } from "../emit.ts";
-import { conceptLocal, conceptsUsed, entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, schemaName, sortTypeName, takesLoad, type FieldShape, type QueryColumn, type QueryField } from "./inputs.ts";
+import { conceptLocal, conceptsUsed, entityInputs, entityPath, entitySegment, filterTypeName, hasRead, propertyName, typeName, queryColumns, schemaName, sortTypeName, takesLoad, type FieldShape, type PlannedField, type QueryColumn, type QueryField, type RelatedItems } from "./inputs.ts";
 import { globalsImport, type GlobalsImport } from "./globals.ts";
-import { entityFileComment } from "./types.ts";
+import { entityFileComment, relatedAttributes } from "./types.ts";
 
 /**
  * What `validators.ts.jig` renders for one entity: one Zod schema per action input,
@@ -28,6 +28,8 @@ export interface ValidatorsView {
   readonly json: boolean;
   /** True when a schema has a line rule (`rules` not null): the file then declares the `$ruled` helper. */
   readonly lineRules: boolean;
+  /** True when an input has the list a `relate` step adds: the file then declares the `$relateItem` helper. */
+  readonly relate: boolean;
   /** Each concept an input field holds, sorted by FQN: the file imports its schema under its local (`moneySchema as $Money$schema`). */
   readonly concepts: readonly ConceptImport[];
 }
@@ -109,20 +111,39 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
       typeArguments: takesLoad(input) ? `<keyof ${typeName(entity.name, entity.position)}Loadable>` : "",
       constName: input.validator,
       shapeTypeName: `${input.name}Shape`,
-      fields: input.fields.map(({ attribute, optional, query }) => ({
+      fields: input.fields.map(({ attribute, optional, query, related }) => ({
         name: attribute.name,
         key: propertyName(attribute.name),
-        schema: query ? querySchema(entity, query) : fieldSchema(attribute, optional),
+        schema: query ? querySchema(entity, query) : related ? relatedSchema(related) : fieldSchema(attribute, optional),
       })),
-      rules: ruleTable(input.fields.filter(({ query }) => !query).map(({ attribute }) => attribute)),
+      rules: ruleTable(input.fields.filter(({ query, related }) => !query && !related).map(({ attribute }) => attribute)),
     })),
     query: hasRead(entity) ? queryView(entity) : null,
   };
   // The template prints `$Object.keys` in the comparison schema a read's filter uses; a file with no input imports nothing.
-  const json = inputs.some((input) => input.fields.some(({ attribute, query }) => !query && attribute.type === "json"));
-  const lineRules = view.schemas.some((schema) => schema.rules !== null);
-  const concepts = conceptImports(document, conceptsUsed(inputs.flatMap((input) => input.fields.filter(({ query }) => !query).map(({ attribute }) => attribute))), `${entityPath(entity)}.validators`);
-  return { ...view, json, lineRules, concepts, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
+  // A related list's items print their own fields: what they hold counts as the file's fields do.
+  const shapes = inputs.flatMap((input) => [...input.fields.filter(({ query, related }) => !query && !related).map(({ attribute }) => attribute), ...relatedAttributes(input.fields)]);
+  const json = shapes.some((attribute) => attribute.type === "json");
+  const relate = inputs.some((input) => input.fields.some(({ related }) => related));
+  const lineRules = view.schemas.some((schema) => schema.rules !== null) || relatedAttributes(inputs.flatMap((input) => input.fields)).some((attribute) => fieldRuleTable(attribute) !== undefined);
+  const concepts = conceptImports(document, conceptsUsed(shapes), `${entityPath(entity)}.validators`);
+  return { ...view, json, lineRules, relate, concepts, globals: view.hasInputs ? globalsImport(`${entityPath(entity)}.validators`, view, view.query ? ["Object"] : []) : null };
+}
+
+/**
+ * The schema of the list a `relate` adds: `z.array($relateItem("id", <keyed>, <new or null>)).readonly().optional()`,
+ * each item object printed from the same planned fields as its type (`relatedType` in `views/types.ts`), with its own
+ * `$ruled` table when a field has a line rule, so a bad field of an item is reported at `["tracks", i, "name"]` with the
+ * code its line gives. Nothing is imported from the target's validators file.
+ */
+function relatedSchema(related: RelatedItems): string {
+  const object = (fields: readonly PlannedField[], extra: string[] = []) => {
+    const body = `z.strictObject({ ${[...fields.map(({ attribute, optional }) => `${propertyName(attribute.name)}: ${fieldSchema(attribute, optional)}`), ...extra].join(", ")} })`;
+    const rules = ruleTable(fields.map(({ attribute }) => attribute));
+    return rules === null ? body : `$ruled(${body}, ${rules})`;
+  };
+  const fresh = related.fresh ? object(related.fresh, [`${propertyName(related.key.name)}: z.undefined().optional()`]) : "null";
+  return `z.array($relateItem(${JSON.stringify(related.key.name)}, ${object(related.keyed)}, ${fresh})).readonly().optional()`;
 }
 
 const filterConst = (entity: Entity) => schemaName(filterTypeName(entity));

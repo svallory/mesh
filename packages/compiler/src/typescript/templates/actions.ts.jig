@@ -35,6 +35,9 @@ import {
   @end
 } from {{ validatorsFromLiteral }};
 import { tables } from {{ schemaFromLiteral }};
+@each(value in entityValueImports)
+import { {{ value.names }} } from {{ value.fromLiteral }};
+@end
 @if(expressionsFromLiteral)
 import {
   @each(name in expressionsValues)

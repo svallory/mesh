@@ -10,7 +10,8 @@ import {
   type SourcePosition,
 } from "@meshfw/model";
 import { inputOptional } from "../../model/input-optional.ts";
-import { derivedInputs } from "../../model/derived-input.ts";
+import { derivedInputs, type RelateStep } from "../../model/derived-input.ts";
+import { entitiesByFile, keyHolderOf } from "../../model/key-holder.ts";
 import { lowerComputed, type Lowered } from "../../model/sql-condition.ts";
 import { emitError } from "../emit-error.ts";
 import { pathSegment } from "../emitters/order.ts";
@@ -74,8 +75,33 @@ export interface PlannedField {
   reference?: Entity;
   /** Set on the fields every read takes from its caller (`load` only when the entity has something to load); their type and schema are not an attribute's. */
   query?: QueryField;
-  /** Set on a field a step adds (`derivedInputs`): `expectedVersion` for `lock &version`. It is typed as an argument is and never applied to the record. */
-  derived?: "lock";
+  /**
+   * Set on a field a step adds (`derivedInputs`): `expectedVersion` for `lock &version`, typed as an argument is, and the
+   * list `tracks` for `relate &tracks`, typed by `related`. Neither is ever applied to the record.
+   */
+  derived?: "lock" | "relate";
+  /** Set on the list a `relate` adds: what one item of it holds, printed inline by the types and validators views. */
+  related?: RelatedItems;
+}
+/**
+ * The items of a `relate &tracks` list: a keyed item names a current child by `key` and holds `keyed` (the key, then the
+ * `update=` action's fields without the key and the inverse; the key alone without `update=`), a new item holds `fresh`
+ * (the `create=` action's fields without the inverse; absent without `create=`, when no item may be new). Each field
+ * keeps its own optionality, taken from the target's own planned input, so an item has exactly the shape of the input
+ * the child action takes, less what the relate fills.
+ */
+export interface RelatedItems {
+  step: RelateStep;
+  /** The entity whose rows the list holds. */
+  target: Entity;
+  /** The target's primary key. */
+  key: Attribute;
+  /** The `belongs-to` of the target that points back at the owner: the relate fills it on a new item. */
+  inverse: string;
+  keyed: PlannedField[];
+  fresh?: PlannedField[];
+  /** True when the target is the entity itself (a self-referencing has-many). */
+  self: boolean;
 }
 /** A stored column a caller may filter and sort by. */
 export interface QueryColumn {
@@ -242,6 +268,8 @@ export function effectiveActions(entity: Entity): Action[] {
 export function entityInputs(
   entity: Entity,
   document: ModelDocument,
+  /** False when the inputs are planned for a relate's items: the actions it names hold no `relate` (`MESH_RELATE_ACTION`), and planning one would recurse. */
+  relate = true,
 ): PlannedInput[] {
   const key = entity.attributes.find((a) => a.primaryKey);
   if (!key)
@@ -326,13 +354,23 @@ export function entityInputs(
       });
     }
     for (const field of derivedInputs(entity, action)) {
+      if (field.source === "relate" && !relate) continue;
       if (fields.some((f) => f.attribute.name === field.name))
         throw emitError("MESH_DUPLICATE_INPUT", `Input ${field.name} conflicts with the row selector`, field.step.position);
-      fields.push({
-        attribute: { name: field.name, type: "integer", nullable: field.nullable, position: field.step.position },
-        optional: !field.required,
-        derived: field.source,
-      });
+      if (field.source === "lock")
+        fields.push({
+          attribute: { name: field.name, type: "integer", nullable: field.nullable, position: field.step.position },
+          optional: !field.required,
+          derived: field.source,
+        });
+      else
+        fields.push({
+          // `json` stands for "no attribute type": the types and validators views print a related field from `related`.
+          attribute: { name: field.name, type: "json", nullable: false, position: field.step.position },
+          optional: true,
+          derived: field.source,
+          related: relatedItems(entity, document, field.step),
+        });
     }
     if (action.kind === "read")
       for (const name of queryFieldsOf(entity))
@@ -345,6 +383,34 @@ export function entityInputs(
   });
   checkInputNames(entity, inputs);
   return inputs;
+}
+/** The items of the list a `relate` step adds (`RelatedItems`), planned from the target's own input. */
+function relatedItems(entity: Entity, document: ModelDocument, step: RelateStep): RelatedItems {
+  const relation = entity.relationships.find((candidate) => candidate.name === step.relationship.name && candidate.kind === "has-many");
+  const target = relation ? keyHolderOf(entitiesByFile(document), entity, relation) : undefined;
+  const key = target?.attributes.find((attribute) => attribute.primaryKey);
+  // The build refused every other case (`checkLockRelate`); a model that reaches here without one was not checked.
+  if (!relation?.inverse || !target || !key)
+    throw emitError("MESH_RELATE_STEP", `\`relate &${step.relationship.name}\` of ${entity.fqn} does not name a has-many the build resolved`, step.relationship.position);
+  const inverse = relation.inverse;
+  const own = entityInputs(target, document, false);
+  const fieldsOf = (name: string | undefined) => {
+    if (name === undefined) return undefined;
+    const input = own.find((candidate) => candidate.action === name);
+    if (!input) throw emitError("MESH_UNKNOWN_ACTION", `:${name} is not an action of ${target.fqn}`, step.position);
+    return input.fields;
+  };
+  const updated = fieldsOf(step.update?.name);
+  const created = fieldsOf(step.create?.name);
+  return {
+    step,
+    target,
+    key,
+    inverse,
+    keyed: [{ attribute: key, optional: false }, ...(updated ?? []).slice(1).filter((field) => field.attribute.name !== inverse)],
+    ...(created ? { fresh: created.filter((field) => field.attribute.name !== inverse && field.attribute.name !== key.name) } : {}),
+    self: target === entity,
+  };
 }
 export function entitySegment(entity: Pick<Entity, "name" | "position">): string {
   return pathSegment({

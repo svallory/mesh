@@ -219,6 +219,7 @@ describe("validatorsView", () => {
       entityFile: "todo/note.mesh.mx",
       hasInputs: false,
       lineRules: false,
+      relate: false,
       concepts: [],
       typesFromLiteral: '"./note.types"',
       schemas: [],

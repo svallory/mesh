@@ -54,6 +54,12 @@ export interface ActionsView {
   readonly typesFromLiteral: string;
   /** Validator constants imported from the validators file, one per action. */
   readonly validatorImports: readonly string[];
+  /**
+   * The entity values a `relate` step calls, other than the file's own: `{ names: "Track as $music$Track$value", fromLiteral:
+   * "./track.actions" }`, imported by value. An import cycle between two actions files is safe: the value is read inside a
+   * method, when it is called, never while the module evaluates.
+   */
+  readonly entityValueImports: readonly { readonly local: string; readonly names: string; readonly fromLiteral: string }[];
   /** The validators file as a quoted string literal, e.g. `"./post.validators"`. */
   readonly validatorsFromLiteral: string;
   /** The adapter's schema file as a quoted string literal, e.g. `"../schema"`. */
@@ -382,6 +388,8 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
   let tableOfUsed = false;
   let sortClassesUsed = false;
   let callerComputedUsed = false;
+  /** The entity values the `relate` steps call, other than this file's own, imported from their actions files (`ActionsView.entityValueImports`). */
+  const entityValues = new Map<string, { local: string; names: string; fromLiteral: string }>();
   // What a caller's filter and sort may do with each computed field they name (O6 (a)).
   const callerFields = callerComputed(document, entity);
   const readBodies: ReadBody[] = [];
@@ -673,7 +681,8 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
       // the new instance: its key, the defaults, the stamped timestamps and null where nothing fills it yet
       head.push("// plan: a create is one insert; nothing is read first");
       // With no check or step, nothing sees the instance before the input, so the row is built with the input in it.
-      const seen = checks.length > 0 || steps.length > 0;
+      // A `relate` runs after the insert and sees the stored row, not the instance.
+      const seen = checks.length > 0 || steps.some((step) => step.kind !== "relate");
       const accepted = new Map<string, { value: string; given: string }>();
       for (const field of input.fields) {
         if (field.derived || inputArgument(action, field.attribute.name)) continue;
@@ -900,6 +909,40 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
           const where = `${step.fn.position.file}:${step.fn.position.line}:${step.fn.position.column + 1}`;
           const publishTarget = `{ entity: ${JSON.stringify(entity.fqn)}, action: ${JSON.stringify(action.name)}, key: { ${propertyName(key.name)}: ${read(record, key.name)} }, at: ${JSON.stringify(where)} }`;
           emit(`{ const $event = await ${call(step.fn, "$after")}; await frame.plain(() => $publishEvent(tx, options.events, ${publishTarget}, $event, $context, $clock)); }`);
+        } else if (step.kind === "relate") {
+          // The children follow the caller's list through the target's own actions, with the caller's context, in this
+          // transaction: the current ones are those a load gives the caller (the target's read policies run), so a child
+          // the caller cannot read is neither listed nor destroyed (ADR-0100, "The relate step").
+          const field = input.fields.find((candidate) => candidate.related?.step === step)!;
+          const related = field.related!;
+          let value = "$entityValue";
+          if (!related.self) {
+            const local = entityLocal(related.target, "value");
+            entityValues.set(local, { local, names: `${typeName(related.target.name, related.target.position)} as ${local}`, fromLiteral: fromLiteral(entity, `${entityPath(related.target)}.actions`) });
+            value = local;
+          }
+          used.load = true;
+          used.plan = true;
+          runtime.add("loadRows");
+          runtime.add("relateRows");
+          runtimeTypes.add("Row");
+          const name = step.relationship.name;
+          const position = step.position;
+          const source = `{ file: ${JSON.stringify(position.file)}, line: ${position.line}, column: ${position.column + 1} }`;
+          const loaded = `((await $loadRows($loadPlan, ${JSON.stringify(entity.fqn)}, tx, [$stored], [${JSON.stringify(name)}], { ...$load, policies: true }))[0] as unknown as { readonly ${propertyName(name)}: readonly $Row[] })`;
+          const parts = [
+            `where: ${JSON.stringify(`${entity.fqn}#${name}`)}`,
+            `field: ${JSON.stringify(name)}`,
+            `key: ${JSON.stringify(related.key.name)}`,
+            `uuidKey: ${related.key.type === "uuid"}`,
+            `source: ${source}`,
+            `current: async () => ${read(loaded, name)}`,
+            ...(step.destroy ? [`destroy: (key) => ${read(value, step.destroy.name)}(key, ...[context])`] : []),
+            ...(step.update ? [`update: (item) => ${read(value, step.update.name)}(item, ...[context])`] : []),
+            ...(step.create ? [`create: (item) => ${read(value, step.create.name)}({ ...item, ${propertyName(related.inverse)}: ${read("$stored", key.name)} as $Record[${JSON.stringify(key.name)}] }, ...[context])`] : []),
+          ];
+          emit(`// relate &${name} (${position.file}:${position.line}): the rows of ${name} follow the caller's list, through ${typeName(related.target.name, related.target.position)}'s own actions and policies`);
+          emit(`await $relateRows({ ${parts.join(", ")} }, ${read("parsed", name)});`);
         }
       }
     };
@@ -942,19 +985,22 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
     let result = "$stored";
     // after the write: still inside the transaction, with the stored record (a destroy: the row as it was) as `self`
     if (hasAfterWrite(steps)) {
-      runtime.add("readOnlyRecord");
-      runtime.add("rescope");
-      if (writes) {
-        runtimeTypes.add("Row");
-        emit("// after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self");
-        emit("const $written: $Row = { ...$stored };");
-      } else emit("// after the write: the steps marked after=:write run here, inside the transaction, and see the deleted row as it was as self");
       const record = writes ? "$written" : "$record";
-      if (loader) {
-        used.plan = true;
-        runtime.add("guarded");
-        emit(`const $after = $rescope($s, { self: $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.fqn)}, ${record}, "action function"), ${where}) });`);
-      } else emit(`const $after = $rescope($s, { self: $readOnlyRecord(${record}, ${where}) });`);
+      // A `relate` reads `$stored` and no scope: `$written` and `$after` are declared only for the steps that run a function.
+      if (needsAfterScope(steps)) {
+        runtime.add("readOnlyRecord");
+        runtime.add("rescope");
+        if (writes) {
+          runtimeTypes.add("Row");
+          emit("// after the write: the steps marked after=:write run here, inside the transaction, and see the stored record as self");
+          emit("const $written: $Row = { ...$stored };");
+        } else emit("// after the write: the steps marked after=:write run here, inside the transaction, and see the deleted row as it was as self");
+        if (loader) {
+          used.plan = true;
+          runtime.add("guarded");
+          emit(`const $after = $rescope($s, { self: $readOnlyRecord($guarded($loadPlan, ${JSON.stringify(entity.fqn)}, ${record}, "action function"), ${where}) });`);
+        } else emit(`const $after = $rescope($s, { self: $readOnlyRecord(${record}, ${where}) });`);
+      }
       emitAfterWrite(steps, record);
       if (writes) {
         // A step after the write may have changed the row through an entity call: the result is the row as the steps left it.
@@ -1134,6 +1180,7 @@ export function actionsView({ document, config }: EmitInput, entity: Entity): Ac
     runtimeValues: [...runtime, "entity", ...(methods.length ? ["NO_FRAME"] : [])].sort(compareCode).map(runtimeImport),
     runtimeTypes: [...runtimeTypes].sort(compareCode).map((name) => `${name} as $${name}`),
     typeImports: [...extraTypes, ...(methods.length ? inputs.map((input) => input.name) : [])],
+    entityValueImports: [...entityValues.values()].sort((a, b) => compareCode(a.local, b.local)),
     typesFromLiteral: JSON.stringify(`./${entitySegment(entity)}.types`),
     validatorImports: methods.map((method) => method.validator),
     validatorsFromLiteral: JSON.stringify(`./${entitySegment(entity)}.validators`),
@@ -1216,14 +1263,19 @@ export function methodSignature(entity: Entity, action: Action, input: PlannedIn
     : { ...base, returnType: present, typeNames: [input.name, `${recordName}With`], globals: [] };
 }
 
-/** True when a `run [after=:write]` or a `publish` is among the steps, at any depth: both run after the write. */
+/** True when a `run [after=:write]`, a `publish` or a `relate` is among the steps, at any depth: each runs after the write. */
 export function hasAfterWrite(steps: readonly Step[]): boolean {
-  return steps.some((step) => step.kind === "publish" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
+  return steps.some((step) => step.kind === "publish" || step.kind === "relate" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && hasAfterWrite(step.steps)));
+}
+
+/** True when a step after the write runs a function (a `run [after=:write]` or a `publish`), which reads the scope `$after`; a `relate` reads none. */
+function needsAfterScope(steps: readonly Step[]): boolean {
+  return steps.some((step) => step.kind === "publish" || (step.kind === "run" && step.after === "write") || (step.kind === "when" && needsAfterScope(step.steps)));
 }
 
 /** True when something among the steps runs before the write: a `set`, a `load`, a plain `run`, or a `when` holding one (a `lock` runs before `validate`, at its own point). */
 function hasBeforeWrite(steps: readonly Step[]): boolean {
-  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "publish" || step.kind === "lock" ? false : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
+  return steps.some((step) => (step.kind === "run" ? step.after !== "write" : step.kind === "publish" || step.kind === "lock" || step.kind === "relate" ? false : step.kind === "when" ? hasBeforeWrite(step.steps) : true));
 }
 
 /** True when `name` is a typed input argument of the action, which is not stored. */

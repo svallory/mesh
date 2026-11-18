@@ -11,8 +11,8 @@ const squash = (text: string) => text.replace(/\s+/g, " ").trim();
 
 /**
  * The steps that run at one point of the action: before its row is written (`after` false), or after it (`after` true,
- * only the `run [after=:write]` steps). A `when` appears in both when it holds steps of both; its condition is evaluated
- * once, before the write.
+ * the `run [after=:write]`, `publish` and `relate` steps). A `when` appears in both when it holds steps of both; its condition is evaluated
+ * once, before the write. A `relate` runs after the write.
  */
 function stepsAt(steps: readonly Step[], after: boolean): Step[] {
   const out: Step[] = [];
@@ -20,7 +20,7 @@ function stepsAt(steps: readonly Step[], after: boolean): Step[] {
     if (step.kind === "when") {
       const inner = stepsAt(step.steps, after);
       if (inner.length) out.push({ ...step, steps: inner });
-    } else if (((step.kind === "run" && step.after === "write") || step.kind === "publish") === after) out.push(step);
+    } else if (((step.kind === "run" && step.after === "write") || step.kind === "publish" || step.kind === "relate") === after) out.push(step);
   }
   return out;
 }
@@ -43,6 +43,10 @@ function stepLines(steps: readonly Step[], depth: number, into: string[], after 
     else if (step.kind === "publish") into.push(`${pad}publish ${squash(step.fn.source)} (plain, ${step.fn.plain?.why ?? "publish-step"}: it raises the event after the write)`);
     // A lock is printed with the checks, where it runs (`lockLine`).
     else if (step.kind === "lock") continue;
+    else if (step.kind === "relate") {
+      const calls = (["destroy", "update", "create"] as const).flatMap((option) => (step[option] ? [`${option} :${step[option]!.name}`] : []));
+      into.push(`${pad}relate &${step.relationship.name}: the rows of ${step.relationship.name} follow the caller's list, through ${calls.join(", ")} (the related entity's actions, in that order, with the caller's context)`);
+    }
     else into.push(`${pad}run ${squash(step.fn.source)}`);
   }
 }
@@ -162,7 +166,9 @@ export function explainAction(entity: Entity, actionName: string, document?: Mod
   section(lines, "strategy", [strategy]);
   section(lines, "input", [
     ...action.input.map((field) => (field.kind === "argument" ? `${field.name} (argument, not stored)` : `&${field.ref.name}`)),
-    ...derivedInputs(entity, action).map((field) => `${field.name} (from lock &${field.step.member.name}${field.required ? "" : ", optional"}, not stored)`),
+    ...derivedInputs(entity, action).map((field) => field.source === "lock"
+      ? `${field.name} (from lock &${field.step.member.name}${field.required ? "" : ", optional"}, not stored)`
+      : `${field.name} (from relate &${field.step.relationship.name}, optional: the rows it lists, not stored)`),
   ]);
   section(lines, "policies", policyLines(entity, action, destroy?.strategy === "guarded"));
   section(lines, "checks", checks);

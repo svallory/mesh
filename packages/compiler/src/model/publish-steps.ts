@@ -20,7 +20,7 @@ const publishesOnly = (step: Step): boolean => step.kind === "publish" || (step.
  * is the spec's way of publishing one of several events (Claim `:end`, "What Hyper needs"), one `when=` per outcome. A
  * `lock` writes nothing of its own before the write (it compares before `validate`, wherever it is written).
  */
-const runsBeforeWrite = (step: Step): boolean => !publishesOnly(step) && !(step.kind === "run" && step.after === "write") && step.kind !== "lock";
+const runsBeforeWrite = (step: Step): boolean => !publishesOnly(step) && !(step.kind === "run" && step.after === "write") && step.kind !== "lock" && step.kind !== "relate";
 
 /** The steps in written order, a `when` before the steps it holds. */
 function flatten(steps: readonly Step[]): Step[] {
