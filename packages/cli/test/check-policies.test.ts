@@ -7,25 +7,13 @@
 // module that runs the two documented examples (using-your-domain.md, "Asking instead of calling", and testing.md), and
 // run on SQLite in memory.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { ForbiddenError, FrameworkError, type Decision } from "@meshfw/runtime";
+import { mesh, project as sharedProject, repo, removeProjects } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/check-policies/domain");
-const projects: string[] = [];
 
-// The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
-// stricter flags; the generated code reads only `data` and its `name`.
-const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
-const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
-`;
-const PACKAGE = {
-  name: "check-policies", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
 /** The tutorial's `src/context.ts`: the actor is required. */
 const CONTEXT = `import "@meshfw/runtime";
 
@@ -100,36 +88,7 @@ export async function refused(id: string): Promise<void> {
 }
 `;
 
-/** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "check-policies-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  await writeFile(join(root, "context.ts"), CONTEXT);
-  await writeFile(join(root, "app.ts"), APP);
-  // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  // The adapter's own dependencies (its query library and zod), as a project that installs it has them.
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
-
-function mesh(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
+const project = () => sharedProject({ prefix: "check-policies-", name: "check-policies", domain: fixture, files: { "context.ts": CONTEXT, "app.ts": APP } });
 
 type Outcome = { ok: true; value: unknown } | { ok: false; error: unknown };
 const outcome = (work: Promise<unknown>): Promise<Outcome> => work.then((value) => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
@@ -143,9 +102,7 @@ beforeAll(async () => {
   expect(built.stderr).toStartWith("domain/todo/todo.mesh.mx:17:14 warning MESH_EXPR_PLAIN this expression runs as plain TypeScript");
   expect(built.stderr).toEndWith("\n0 errors, 1 warning\n");
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 const OWNER = "({ actor }) => &list.ownerId === actor.id";
 

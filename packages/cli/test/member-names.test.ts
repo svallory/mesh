@@ -9,14 +9,12 @@
 // - Guards: one policy per name, each denying the label that is its name;
 // - Loads: a belongs-to named `constructor` and computed fields named `toString` and `valueOf`, loaded by a read.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { ForbiddenError, InvalidInputError } from "@meshfw/runtime";
+import { mesh, project as sharedProject, repo, removeProjects } from "./project.ts";
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/member-names/domain");
-const projects: string[] = [];
 
 /** The names the build refused before any member name but `__proto__` was accepted; each names an attribute of Fields, an action of Calls and a policy of Guards. */
 const NAMES = [
@@ -32,16 +30,6 @@ const UPDATES = [
   "__defineSetter__", "__lookupGetter__", "_archive", "archive_", "__archive__", "_1st", "__2",
 ] as const;
 
-// The adapter is imported by a computed specifier so that tsc does not type-check its sources under the project's
-// stricter flags; the generated code reads only `data` and its `name`.
-const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
-const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
-export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }) };
-`;
-const PACKAGE = {
-  name: "member-names", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
 /** Type-level checks through the specifiers: each name is the member it declares, never the inherited one. */
 const CHECK = `import { Calls, Fields, Loads, type EditFieldsInput, type FieldsFilter, type LoadsFilter, type LoadsLoadable } from "#mesh/domain/names";
 
@@ -84,35 +72,7 @@ export const reads = () => [
 ];
 `;
 
-/** A project outside the repo with the fixture's domain, the SQLite adapter and the packages linked in. */
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "mesh-member-names-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  await writeFile(join(root, "check.ts"), CHECK);
-  // Bun's isolated linker keeps workspace dependencies at each package, so the project links what it imports.
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  // The adapter's own dependencies (its query library and zod), as a project that installs it has them.
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
-
-function mesh(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
+const project = () => sharedProject({ prefix: "mesh-member-names-", name: "member-names", domain: fixture, files: { "check.ts": CHECK } });
 
 async function rejection<E>(call: Promise<unknown>, type: new (...args: never[]) => E): Promise<E> {
   const error = await call.then(() => undefined, (cause: unknown) => cause);
@@ -125,9 +85,7 @@ beforeAll(async () => {
   root = await project();
   expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 const generated = (path: string) => readFile(join(root, ".mesh", path), "utf8");
 

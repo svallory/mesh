@@ -9,20 +9,18 @@
 // `DomainEvent`, `eventClasses`, `published` and `readEvents` of `#mesh`, and `Mesh.fqnOf`; the outbox rows through the
 // data layer's own `readOutbox` too.
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { CursorAheadError, dispatchCommand, EventsDeletedError, FrameworkError, HandlerStoppedError, InvalidInputError, Mesh, NotFoundError } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { runCli } from "../src/cli.ts";
 import { freeGlobals } from "../../compiler/test/free-globals.ts";
 import { closeTypeServer } from "../../compiler/test/type-server.ts";
+import { mesh as meshSpawn, project as sharedProject, repo, removeProjects } from "./project.ts";
 
 afterAll(closeTypeServer);
 
-const repo = resolve(import.meta.dir, "../../..");
 const fixture = join(import.meta.dir, "fixtures/events/domain");
-const projects: string[] = [];
 
 const CONFIG = `const adapter: string = "@meshfw/data-sqlite";
 const { sqlite } = (await import(adapter)) as { sqlite(options: { file: string }): { readonly name: string } };
@@ -30,10 +28,6 @@ const testing: string = "@meshfw/runtime/testing";
 const { testBus } = (await import(testing)) as { testBus(): import("@meshfw/runtime").EventBus };
 export default { domain: "domain", output: ".mesh", data: sqlite({ file: ":memory:" }), events: { bus: testBus() } };
 `;
-const PACKAGE = {
-  name: "events", private: true, type: "module",
-  imports: { "#mesh": "./.mesh/index.ts", "#mesh/domain": "./.mesh/domain/index.ts", "#mesh/domain/*": "./.mesh/domain/*/index.ts" },
-};
 const TSCONFIG = {
   compilerOptions: { noEmit: true, strict: true, module: "esnext", moduleResolution: "bundler", target: "es2022", skipLibCheck: true, allowImportingTsExtensions: true, types: ["bun"] },
   include: [".mesh/**/*.ts", "mesh.config.ts"],
@@ -90,28 +84,7 @@ export const noContext = dispatch(command);
 export const commandRecord = (record: EventRecord<PayInvoice>) => record;
 `;
 
-async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "mesh-events-"));
-  projects.push(root);
-  await cp(fixture, join(root, "domain"), { recursive: true });
-  await writeFile(join(root, "mesh.config.ts"), CONFIG);
-  await writeFile(join(root, "package.json"), `${JSON.stringify(PACKAGE, null, 2)}\n`);
-  await writeFile(join(root, "check.ts"), CHECK);
-  await writeFile(join(root, "tsconfig.json"), `${JSON.stringify(TSCONFIG)}\n`);
-  await mkdir(join(root, "node_modules/@meshfw"), { recursive: true });
-  await mkdir(join(root, "node_modules/@types"), { recursive: true });
-  await symlink(join(repo, "packages/cli"), join(root, "node_modules/meshfw"));
-  for (const name of ["compiler", "model", "runtime", "data-sqlite"]) {
-    await symlink(join(repo, "packages", name), join(root, "node_modules/@meshfw", name));
-  }
-  const adapterModules = join(repo, "packages/data-sqlite/node_modules");
-  for (const name of await readdir(adapterModules)) {
-    if (name.startsWith(".") || name.startsWith("@")) continue;
-    await symlink(await realpath(join(adapterModules, name)), join(root, "node_modules", name));
-  }
-  await symlink(await realpath(join(repo, "node_modules/@types/bun")), join(root, "node_modules/@types/bun"));
-  return root;
-}
+const project = () => sharedProject({ prefix: "mesh-events-", name: "events", domain: fixture, config: CONFIG, files: { "check.ts": CHECK, "tsconfig.json": `${JSON.stringify(TSCONFIG)}\n` } });
 
 /** In-process: the same `mesh` entry the binary runs, with captured streams. The CLI's
  * contract is "run from the project root" and a config may hold cwd-relative paths
@@ -129,20 +102,12 @@ async function mesh(root: string, ...args: string[]) {
   } finally { process.chdir(cwd); }
 }
 
-/** A real process running the source entry: the smoke test for the binary wrapper. */
-function meshSpawn(root: string, ...args: string[]) {
-  const child = Bun.spawnSync([process.execPath, join(repo, "packages/cli/src/bin.ts"), ...args], { cwd: root });
-  return { code: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-}
-
 let root: string;
 beforeAll(async () => {
   root = await project();
   expect(await mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
-afterAll(async () => {
-  for (const dir of projects.splice(0)) await rm(dir, { recursive: true, force: true });
-});
+afterAll(removeProjects);
 
 describe("events and commands in files of their own", () => {
 // The binary wrapper (src/bin.ts) over runCli: one real process, so the thin wrapper stays covered.
