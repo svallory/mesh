@@ -54,18 +54,34 @@ const doc = `entity :Doc table="docs"
     policy :unlocked types=[:destroy]
       forbid-if=() => &locked
 `;
-// One hop through a nullable belongs-to: a subquery inside the delete's WHERE.
+// One hop through a nullable belongs-to: a subquery inside the delete's WHERE. A folder is also its owner's to delete,
+// items and all, and its `tidy` step runs whatever a test puts in `hooks.step` (a nested call) inside its transaction.
 const folder = `import { Item } from "./item.mesh.mx"
+import { tidyStep } from "./steps"
 entity :Folder table="folders"
   attributes
     uuid :id primary-key
     uuid :ownerId
   relationships
     has-many :items entity=Item
-  actions auto=[:read]
+  actions auto=[:read, :destroy]
+    update :tidy
+      do
+        run() {
+          await tidyStep()
+        }
   policies
     policy :open types=[:read]
       authorize-if=() => true
+    policy :owned types=[:destroy]
+      authorize-if=({ actor }) => &ownerId === actor.id
+    policy :anyone actions=[&tidy]
+      authorize-if=() => true
+`;
+const steps = `export const hooks: { step: () => Promise<unknown> } = { step: async () => undefined };
+export async function tidyStep(): Promise<void> {
+  await hooks.step();
+}
 `;
 const item = `import { Folder } from "./folder.mesh.mx"
 entity :Item table="items"
@@ -152,6 +168,7 @@ async function generate(): Promise<string> {
   const data: ResolvedConfig["data"] = { kind: "data-adapter", name: "sqlite", build: "@meshfw/data-sqlite/build", capabilities, options: { file: ":memory:" } };
   const config: ResolvedConfig = { root: dir, configFile: join(dir, "mesh.config.ts"), entityFiles: [], domainRoot: join(dir, "src/domain"), output: join(dir, ".mesh"), data };
   await mkdir(join(dir, "src/domain"), { recursive: true });
+  await Bun.write(join(dir, "src/domain/steps.ts"), steps);
   const built = buildModel({ root: dir, domainRoot: join(dir, "src/domain"), files: Object.entries({ user, note, doc, folder, item, node, box, thing, pad }).map(([name, source]) => ({ file: `src/domain/${name}.mesh.mx`, source })) });
   expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
   await writeGeneratedFiles(await generateFiles({ config, document: built.document as ModelDocument }, build), config);
@@ -163,10 +180,12 @@ async function generate(): Promise<string> {
 let dir: string;
 let app: any;
 let domain: any;
+let stepHooks: { step: () => Promise<unknown> };
 beforeAll(async () => {
   dir = await generate();
   app = await import(join(dir, ".mesh/index.ts"));
   domain = await import(join(dir, ".mesh/domain/index.ts"));
+  stepHooks = (await import(join(dir, "src/domain/steps.ts"))).hooks;
 });
 afterAll(async () => { if (dir) await rm(dir, { recursive: true, force: true }); });
 
@@ -268,7 +287,7 @@ describe("the generated files", () => {
   }, 30_000);
 
   test("every destroy here is guarded", async () => {
-    for (const entity of ["note", "doc", "item", "node", "box", "pad"])
+    for (const entity of ["note", "doc", "folder", "item", "node", "box", "pad"])
       expect(await Bun.file(join(dir, `.mesh/domain/${entity}.actions.ts`)).text()).toContain("tx.deleteByKeyGuarded!(");
   });
 });
@@ -335,6 +354,16 @@ describe("a guarded destroy", () => {
     const orphan = await bothPaths((mesh) => mesh.destroyItem({ id: id(32) }, alice), "items");
     expect(orphan.guarded).toEqual(orphan.read);
     expect((orphan.guarded as any).forbidden.breakdown[0].result).toBe(null);
+  });
+
+  test("a folder that has items: a stranger is forbidden on both paths, the owner deletes on both", async () => {
+    const denied = await bothPaths((mesh) => mesh.destroyFolder({ id: id(21) }, bob), "folders");
+    expect(denied.guarded).toEqual(denied.read);
+    expect(denied).toMatchObject({ rows: [id(21)], guardedCounts: { locked: 0, guarded: 1 } });
+    expect((denied.guarded as any).forbidden).toMatchObject({ policies: ["owned"], reason: "failed" });
+    // SQLite gets no foreign keys from createSchema, so the delete goes through on both paths and the items stay.
+    const allowed = await bothPaths((mesh) => mesh.destroyFolder({ id: id(21) }, alice), "folders");
+    expect(allowed).toMatchObject({ guarded: "done", read: "done", rows: [], guardedCounts: { locked: 0, guarded: 1 } });
   });
 
   test("through a hop to its own table: a node under a locked parent is kept, one under an open parent or none is deleted", async () => {
@@ -461,4 +490,37 @@ test("a denied guarded destroy inside a transaction fails that transaction, even
     expect((failed as FrameworkError).cause).toBeInstanceOf(ForbiddenError);
     expect(await rows("notes")).toEqual([id(1), id(2)]);
   } finally { await db.close(); }
+});
+
+describe("a guarded destroy called from another action's step", () => {
+  afterAll(() => { stepHooks.step = async () => undefined; });
+
+  test("when it is denied, the outer action fails and its transaction rolls back", async () => {
+    const { db, mesh, rows, counts } = await seeded();
+    try {
+      stepHooks.step = async () => {
+        await domain.Note.destroy({ id: id(2) }, alice);
+        await domain.Note.destroy({ id: id(1) }, bob);
+      };
+      const failed = await mesh.tidyFolder({ id: id(21) }, alice).then(() => "done", (error: unknown) => error);
+      expect(failed).toBeInstanceOf(ForbiddenError);
+      expect((failed as ForbiddenError).entity).toBe("Note");
+      // The one locked read is the outer update's own; both nested deletes are guarded.
+      expect(counts).toEqual({ locked: 1, guarded: 2 });
+      expect(await rows("notes")).toEqual([id(1), id(2)]);
+      // Caught inside the step, the denial still fails the outer transaction.
+      stepHooks.step = async () => {
+        await domain.Note.destroy({ id: id(2) }, alice);
+        await domain.Note.destroy({ id: id(1) }, bob).catch(() => undefined);
+      };
+      const caught = await mesh.tidyFolder({ id: id(21) }, alice).then(() => "done", (error: unknown) => error);
+      expect(caught).toBeInstanceOf(FrameworkError);
+      expect((caught as FrameworkError).cause).toBeInstanceOf(ForbiddenError);
+      expect(await rows("notes")).toEqual([id(1), id(2)]);
+      // Allowed, the nested delete commits with the outer action.
+      stepHooks.step = async () => { await domain.Note.destroy({ id: id(2) }, alice); };
+      expect(await mesh.tidyFolder({ id: id(21) }, alice).then(() => "done")).toBe("done");
+      expect(await rows("notes")).toEqual([id(1)]);
+    } finally { await db.close(); }
+  });
 });
