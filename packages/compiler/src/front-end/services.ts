@@ -4,6 +4,7 @@ import {
   PROTOTYPE_SETTING_NAME,
   attributeReaders,
   fileImports,
+  SERVICE_PACKAGES,
   importable,
   moduleOfFolder,
   readInputLines,
@@ -64,7 +65,7 @@ export function buildService(
   const fqn = [...module.split("/").filter(Boolean), name].join(".");
   const service: Service = { name, fqn, file, module, imports: [], operations: [], policies: [], position: pos(root) };
 
-  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, new Map(), importDetails, declaredFile, at, fail);
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, new Map(), importDetails, declaredFile, at, fail, SERVICE_PACKAGES);
   service.imports = imports;
   // The kind of declaration each binding stands for, as `buildEntity` reads it: a named import the declaration its imported
   // name names, a namespace alias every kind its file declares; a file the project lacks is an entity's (it is reported).
