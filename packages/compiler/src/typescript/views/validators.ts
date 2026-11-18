@@ -131,7 +131,7 @@ export function validatorsView({ document }: EmitInput, entity: Entity): Validat
 }
 
 /**
- * The schema of the list a `relate` adds: `z.array($relateItem("id", <keyed>, <new or null>)).readonly().optional()`,
+ * The schema of the list a `relate` adds: `z.array($relateItem("id", <keyed or null>, <new or null>)).readonly().optional()`,
  * each item object printed from the same planned fields as its type (`relatedType` in `views/types.ts`), with its own
  * `$ruled` table when a field has a line rule, so a bad field of an item is reported at `["tracks", i, "name"]` with the
  * code its line gives. Nothing is imported from the target's validators file.
@@ -143,7 +143,8 @@ function relatedSchema(related: RelatedItems): string {
     return rules === null ? body : `$ruled(${body}, ${rules})`;
   };
   const fresh = related.fresh ? object(related.fresh, [`${propertyName(related.key.name)}: z.undefined().optional()`]) : "null";
-  return `z.array($relateItem(${JSON.stringify(related.key.name)}, ${object(related.keyed)}, ${fresh})).readonly().optional()`;
+  const keyed = related.keyed ? object(related.keyed) : "null";
+  return `z.array($relateItem(${JSON.stringify(related.key.name)}, ${keyed}, ${fresh})).readonly().optional()`;
 }
 
 const filterConst = (entity: Entity) => schemaName(filterTypeName(entity));

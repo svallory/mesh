@@ -74,15 +74,16 @@ const $ruled = <S extends z.ZodType>(schema: S, rules: $Rules): S => {
 @if(relate)
 /**
  * One item of a list a `relate` step takes: an item that holds `key` is checked by `keyed`, any other by `fresh` (a list
- * whose relate names no `create=` takes no new item, `fresh` null). The item's issues keep their paths under the list
+ * whose relate names no `create=` takes no new item, `fresh` null; one whose relate names neither `update=` nor
+ * `destroy=` takes no keyed item, `keyed` null). The item's issues keep their paths under the list
  * (`["tracks", 1, "name"]`) and the marks of `$ruled`, so a bad field of an item is reported as a bad field of the input.
  */
-const $relateItem = <K, N = never>(key: string, keyed: z.ZodType<K>, fresh: z.ZodType<N> | null) =>
+const $relateItem = <K = never, N = never>(key: string, keyed: z.ZodType<K> | null, fresh: z.ZodType<N> | null) =>
   z.unknown().transform((value, ctx): K | N => {
     const holdsKey = typeof value === "object" && value !== null && key in value && (value as { readonly [key: string]: unknown })[key] !== undefined;
     const schema: z.ZodType<K | N> | null = holdsKey ? keyed : fresh;
     if (schema === null) {
-      ctx.addIssue({ code: "custom", message: `an item needs ${key}: this list takes no new item` });
+      ctx.addIssue({ code: "custom", message: holdsKey ? `an item may not hold ${key}: this list takes no keyed item` : `an item needs ${key}: this list takes no new item` });
       return z.NEVER;
     }
     const result = schema["~standard"].validate(value);

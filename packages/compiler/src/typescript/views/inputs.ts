@@ -85,8 +85,9 @@ export interface PlannedField {
 }
 /**
  * The items of a `relate &tracks` list: a keyed item names a current child by `key` and holds `keyed` (the key, then the
- * `update=` action's fields without the key and the inverse; the key alone without `update=`), a new item holds `fresh`
- * (the `create=` action's fields without the inverse; absent without `create=`, when no item may be new). Each field
+ * `update=` action's fields without the key and the inverse; the key alone without `update=`; absent without `update=` and
+ * `destroy=`, when no item may name a child, rule R8), a new item holds `fresh` (the `create=` action's fields without
+ * the inverse; absent without `create=`, when no item may be new). Each field
  * keeps its own optionality, taken from the target's own planned input, so an item has exactly the shape of the input
  * the child action takes, less what the relate fills.
  */
@@ -98,7 +99,7 @@ export interface RelatedItems {
   key: Attribute;
   /** The `belongs-to` of the target that points back at the owner: the relate fills it on a new item. */
   inverse: string;
-  keyed: PlannedField[];
+  keyed?: PlannedField[];
   fresh?: PlannedField[];
   /** True when the target is the entity itself (a self-referencing has-many). */
   self: boolean;
@@ -407,7 +408,8 @@ function relatedItems(entity: Entity, document: ModelDocument, step: RelateStep)
     target,
     key,
     inverse,
-    keyed: [{ attribute: key, optional: false }, ...(updated ?? []).slice(1).filter((field) => field.attribute.name !== inverse)],
+    // A keyed item names a child to keep, update or spare: without `update=` and `destroy=` no item may (rule R8).
+    ...(step.update || step.destroy ? { keyed: [{ attribute: key, optional: false }, ...(updated ?? []).slice(1).filter((field) => field.attribute.name !== inverse)] } : {}),
     ...(created ? { fresh: created.filter((field) => field.attribute.name !== inverse && field.attribute.name !== key.name) } : {}),
     self: target === entity,
   };

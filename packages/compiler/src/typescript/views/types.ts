@@ -293,19 +293,20 @@ function declaration(name: string, generics: string, members: TypeMember[]): Typ
 
 /**
  * The list a `relate` adds, printed inline: `readonly ({ id: string; name?: string | undefined } | { name: string; id?:
- * undefined })[]`, the keyed item, then the new item with no key (absent without `create=`). Each object is printed from
+ * undefined })[]`, the keyed item (absent without `update=` and `destroy=`), then the new item with no key (absent
+ * without `create=`). Each object is printed from
  * the planned fields, a `belongs-to` as its key's type, so nothing of the target's types file is imported.
  */
 function relatedType(related: RelatedItems): string {
   const object = (fields: readonly PlannedField[], extra: string[] = []) =>
     `{ ${[...fields.map(({ attribute, optional }) => `${propertyName(attribute.name)}${optional ? "?" : ""}: ${valueType(attribute)}${optional ? " | undefined" : ""}`), ...extra].join("; ")} }`;
-  const items = [object(related.keyed), ...(related.fresh ? [object(related.fresh, [`${propertyName(related.key.name)}?: undefined`])] : [])];
-  return `readonly (${items.join(" | ")})[]`;
+  const items = [...(related.keyed ? [object(related.keyed)] : []), ...(related.fresh ? [object(related.fresh, [`${propertyName(related.key.name)}?: undefined`])] : [])];
+  return items.length === 1 ? `readonly ${items[0]}[]` : `readonly (${items.join(" | ")})[]`;
 }
 
 /** The attributes the inline item types of an input's related lists hold, for the concepts a file imports. */
 export function relatedAttributes(fields: readonly PlannedField[]): FieldShape[] {
-  return fields.flatMap(({ related }) => (related ? [...related.keyed, ...(related.fresh ?? [])].map(({ attribute }) => attribute) : []));
+  return fields.flatMap(({ related }) => (related ? [...(related.keyed ?? []), ...(related.fresh ?? [])].map(({ attribute }) => attribute) : []));
 }
 
 function member({ attribute, optional, reference, query, related }: PlannedField, entity: Entity, locals: Locals): TypeMember {

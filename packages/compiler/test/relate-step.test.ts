@@ -383,14 +383,16 @@ describe("generated code", () => {
   test("the input types and validators print each item inline", async () => {
     await generate();
     const types = generated.get("generated/domain/album.types.ts")!;
-    expect(types).toContain("tracks?: readonly ({ id: string } | { name: string; id?: undefined })[] | undefined;");
+    // without update= and destroy= no item may name a child (rule R8): the create takes new items only
+    expect(types).toContain("tracks?: readonly { name: string; id?: undefined }[] | undefined;");
+    expect(types).not.toContain("{ id: string } |");
     expect(types.replace(/\s+/g, " ")).toContain("tracks?: | readonly ({ id: string; name?: string | undefined } | { name: string; id?: undefined })[] | undefined;");
     // without create= no new item is taken
     expect(types).toContain("export type KeepAlbumInput = {\n  id: string;\n  tracks?: readonly { id: string; name?: string | undefined }[] | undefined;\n};");
     const validators = generated.get("generated/domain/album.validators.ts")!.replace(/\s+/g, " ");
     expect(validators).toContain("const $relateItem = ");
     // the item's line rule keeps its code and its line in the target's file
-    expect(validators).toContain('tracks: z .array( $relateItem( "id", z.strictObject({ id: z.uuid() }), $ruled( z.strictObject({ name: z.string().min(1, "must be at least 1 character"), id: z.undefined().optional(), }), { name: { too_small: { code: "too_short", source: { file: "track.mesh.mx", line: 5, column: 5 }, }, }, }, ), ), ) .readonly() .optional(), })');
+    expect(validators).toContain('tracks: z .array( $relateItem( "id", null, $ruled( z.strictObject({ name: z.string().min(1, "must be at least 1 character"), id: z.undefined().optional(), }), { name: { too_small: { code: "too_short", source: { file: "track.mesh.mx", line: 5, column: 5 }, }, }, }, ), ), ) .readonly() .optional(), })');
     expect(validators).toContain('keepAlbumInputSchema = z.strictObject({ id: z.uuid(), tracks: z .array( $relateItem( "id", $ruled(');
     expect(validators).toMatch(/keepAlbumInputSchema = .*?\), null, \), \) \.readonly\(\) \.optional\(\), \}\)/);
   });
@@ -431,7 +433,7 @@ describe("generated code", () => {
     expect(actions.replace(/\s+/g, " ")).toContain('create: (item) => $entityValue.add({ ...item, parent: $stored.id as $Record["id"] }, ...[context]),');
     expect(actions).not.toMatch(/import \{ Task as/);
     expect(actions).toContain("uuidKey: false");
-    expect(out.get("generated/domain/task.types.ts")).toContain("children?: readonly ({ id: number } | { title: string; id?: undefined })[] | undefined;");
+    expect(out.get("generated/domain/task.types.ts")).toContain("children?: readonly { title: string; id?: undefined }[] | undefined;");
   });
   test("the generated tree type-checks", async () => {
     const root = await mkdtemp(resolve(import.meta.dir, "../.scratch-mesh-relate-"));

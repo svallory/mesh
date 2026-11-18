@@ -6,16 +6,25 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { freeGlobals } from "../../compiler/test/free-globals.ts";
+import { closeTypeServer } from "../../compiler/test/type-server.ts";
 import { mesh, project, removeProjects, repo } from "./project.ts";
 
 const fixture = join(import.meta.dir, "fixtures/relate-step");
 
 let root: string;
 beforeAll(async () => {
-  root = await project({ prefix: "relate-step-", name: "relate-step", domain: join(fixture, "domain"), files: { "context.ts": await readFile(join(fixture, "context.ts"), "utf8") } });
+  root = await project({ prefix: "relate-step-", name: "relate-step", domain: join(fixture, "domain"), files: { "context.ts": await readFile(join(fixture, "context.ts"), "utf8"), "tsconfig.json": `${JSON.stringify(TSCONFIG, null, 2)}\n` } });
   expect(mesh(root, "build")).toEqual({ code: 0, stdout: "", stderr: "0 errors, 0 warnings\n" });
 }, 30_000);
 afterAll(removeProjects);
+afterAll(closeTypeServer);
+
+/** The program the TypeScript checker resolves the generated tree's names in (`freeGlobals`). */
+const TSCONFIG = {
+  compilerOptions: { noEmit: true, strict: true, module: "esnext", moduleResolution: "bundler", target: "es2022", skipLibCheck: true, allowImportingTsExtensions: true, types: ["bun"] },
+  include: [".mesh/**/*.ts", "mesh.config.ts", "context.ts"],
+};
 
 interface Track { id: string; name: string; hidden: boolean; albumId: string }
 interface Album { id: string; title: string }
@@ -41,6 +50,11 @@ describe("the relate step", () => {
     expect(child.stdout.toString() + child.stderr.toString()).toBe("");
     expect(child.exitCode).toBe(0);
   }, 30_000);
+
+  test("the generated tree reaches globals only through $globals.ts", async () => {
+    const files = (await readdir(join(root, ".mesh"), { recursive: true })).filter((name) => name.endsWith(".ts")).map((name) => join(root, ".mesh", name));
+    expect(await freeGlobals(join(root, "tsconfig.json"), files)).toEqual([]);
+  }, 60_000);
 
   test("on SQLite the children follow the caller's list", async () => {
     const app = await import(join(root, ".mesh/index.ts"));
@@ -112,6 +126,14 @@ describe("the relate step", () => {
       expect((await failureOf(binding.run(() => Album.pick({ id: album.id, tracks: [{ id: current[0]!.id, name: "x" }] })))).issues?.map((issue) => issue.path)).toEqual([["tracks", 0]]);
       // Without create= no item may be new.
       expect((await failureOf(binding.run(() => Album.pick({ id: album.id, tracks: [{ name: "x" }] })))).issues?.map((issue) => [issue.path, issue.message])).toEqual([[["tracks", 0], "an item needs id: this list takes no new item"]]);
+      // Without update= and destroy= no item may name a child (rule R8), on an update and on a create, at the cast.
+      const noKeyed = [[["tracks", 0], "an item may not hold id: this list takes no keyed item"]];
+      expect((await failureOf(binding.run(() => Album.keep({ id: album.id, tracks: [{ id: current[0]!.id }] })))).issues?.map((issue) => [issue.path, issue.message])).toEqual(noKeyed);
+      expect((await failureOf(binding.run(() => Album.make({ title: "K", tracks: [{ id: current[0]!.id }] })))).issues?.map((issue) => [issue.path, issue.message])).toEqual(noKeyed);
+      expect(writes).toEqual([]);
+      // A new item may spell its key out as undefined: the child's own strict input never sees it.
+      const spelled = await binding.run(() => Album.make({ title: "U", tracks: [{ id: undefined, name: "spelled" }] }));
+      expect(await names(spelled.id)).toEqual(["spelled"]);
       // Without destroy= an empty list keeps every child; with it, it destroys them.
       writes.length = 0;
       await binding.run(() => Album.keep({ id: album.id, tracks: [] }));
