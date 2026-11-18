@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   CORE_TABLES, CORE_TABLE_NAMES, CursorAheadError, DECLARATION, EventUndeclaredError, EventsDeletedError, FrameworkError, MeshError, bindDomain, loadEvents,
   OUTBOX_STATE_TABLE, OUTBOX_TABLE, FAILURES_TABLE, HANDLER_PROGRESS_TABLE, SUBSCRIPTION_PROGRESS_TABLE, coreTablesFor, publishEvent, published, readEvents, rows,
-  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, mergeHandlers, runAction, type EventRecord, type HandlerKind,
+  subscribe, Mesh, HANDLER_KIND, EventsConfigError, NO_FRAME, entity, mergeHandlers, retryFailed, runAction, type EventRecord, type HandlerKind,
 } from "@meshfw/runtime";
 import { testBus } from "@meshfw/runtime/testing";
 import { notifyPublished, onPublished } from "../src/events.ts";
@@ -982,6 +982,20 @@ describe("section handlers, handed to bindDomain (handlers design, H17 to H19)",
     const renamed = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus() }, clock }, frame, section("billing.Invoice.mailReceipt"));
     await renamed.deliver();
     expect(seen.sort()).toEqual(["post c null", 'receipt c {"system":true}']);
+  });
+
+  test("retryFailed takes a section handler's key before any delivery is started; an unknown name lists both sources' keys", async () => {
+    const { layer } = memoryLayer({ delivery: true });
+    // The dead-letter operations, with nothing set aside.
+    const transaction = layer.transaction.bind(layer);
+    const failures = { writeFailure: async () => true, readFailures: async () => [], deleteFailure: async () => true, renameFailures: async () => 0 };
+    const withFailures = { ...layer, transaction: <T>(run: (tx: DataOperations) => Promise<T>) => transaction((tx) => run({ ...tx, ...failures } as never)) } as DataLayer;
+    const module: EventsModule = { handlers: { listen: { log: Mesh.handler({ events: [InvoicePaid], run: () => undefined }) } } };
+    const binding = bindDomain({ Invoice, InvoicePaid }, withFailures, { events: { bus: testBus({ capabilities: ["ordered-delivery", "dead-letters"] }), load: async () => module }, clock }, frame, section());
+    expect(await retryFailed(binding, "billing.Invoice.receipt")).toEqual({ handled: 0, failed: null });
+    const error = await rejection(() => retryFailed(binding, "billing.Invoice.mailReceipt"));
+    expect(error).toBeInstanceOf(FrameworkError);
+    expect(error.message).toBe('retryFailed("billing.Invoice.mailReceipt"): no handler named "billing.Invoice.mailReceipt" is registered (by the events module or a handlers section); the handlers are billing.Invoice.receipt, billing.Ledger.post, log');
   });
 });
 

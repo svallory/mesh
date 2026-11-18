@@ -1570,7 +1570,7 @@ export async function forgetHandler(binding: Binding, name: string): Promise<voi
     const row = (await ops.readHandlerProgress()).find((each) => each.name === name);
     if (!row) throw new FrameworkError(`forgetHandler: no handler named ${JSON.stringify(name)} has a progress row`);
     if (liveUnder(state, row.generation))
-      throw new FrameworkError(`forgetHandler: the handler ${JSON.stringify(name)} is registered by the live deliverer, so its progress is not dropped. Remove it from the events module and restart first`);
+      throw new FrameworkError(`forgetHandler: the handler ${JSON.stringify(name)} is registered by the live deliverer, so its progress is not dropped. Remove it from the events module or from the handlers section of its entity file (then rebuild) and restart first`);
     await ops.deleteHandlerProgress(name);
   });
 }
@@ -1674,9 +1674,9 @@ export async function retryFailed(binding: Binding, name: string): Promise<Retry
   if (!started) {
     declared = declaredHandlers(module, checkedBus(config.bus), events, section);
     if (!declared.some((entry) => entry.registered.name === name))
-      throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): the events module registers no handler named ${JSON.stringify(name)}; its handlers are ${declared.map((entry) => entry.registered.name).join(", ") || "none"}`);
+      throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): no handler named ${JSON.stringify(name)} is registered (by the events module or a handlers section); the handlers are ${declared.map((entry) => entry.registered.name).join(", ") || "none"}`);
   } else if (!started.registered(name)) {
-    throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): the events module registers no handler named ${JSON.stringify(name)}; its handlers are ${started.registeredNames().join(", ") || "none"}`);
+    throw new FrameworkError(`retryFailed(${JSON.stringify(name)}): no handler named ${JSON.stringify(name)} is registered (by the events module or a handlers section); the handlers are ${started.registeredNames().join(", ") || "none"}`);
   }
   if (db.retrying.has(name))
     throw new FrameworkError(`retryFailed(${JSON.stringify(name)}) is already running in this process: two runs would handle one set-aside event twice`);
@@ -1749,7 +1749,7 @@ export async function forgetByName(layer: DataLayer, name: string, options?: { r
       throw new FrameworkError(`The name ${JSON.stringify(name)} is held by a handler's progress row and by a subscription's row: forget each from the application, with forgetHandler(${JSON.stringify(name)}) or forgetSubscription(${JSON.stringify(name)})`);
     if (handler) {
       if (liveUnder(state, handler.generation))
-        throw new FrameworkError(`The handler ${JSON.stringify(name)} is registered by the live deliverer (generation ${handler.generation}), so its progress is not dropped. Remove it from the events module and restart the deliverer first`);
+        throw new FrameworkError(`The handler ${JSON.stringify(name)} is registered by the live deliverer (generation ${handler.generation}), so its progress is not dropped. Remove it from the events module or from the handlers section of its entity file (then rebuild) and restart the deliverer first`);
       await ops.deleteHandlerProgress(name);
       return { kind: "handler", name, position: handler.position };
     }

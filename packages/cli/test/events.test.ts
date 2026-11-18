@@ -1021,7 +1021,7 @@ describe("mesh events forget", () => {
     await layer.close();
     const running = await mesh(dir, "events", "forget", "running");
     expect(running.code).toBe(1);
-    expect(running.stderr).toContain('events forget failed: The handler "running" is registered by a live process (pid 4242 on host api-1), so its progress is not dropped. Remove it from the events module and restart every process first');
+    expect(running.stderr).toContain('events forget failed: The handler "running" is registered by a live process (pid 4242 on host api-1), so its progress is not dropped. Remove it from the events module or from the handlers section of its entity file (then rebuild) and restart every process first');
     const open = await mesh(dir, "events", "forget", "open");
     expect(open.code).toBe(1);
     expect(open.stderr).toContain('events forget failed: The subscription "open" is open in a live process (pid 4242 on host api-1); close it there first');
