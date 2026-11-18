@@ -23,8 +23,8 @@ type $HandlerScope<E extends object> = {
 export const $handlers: $SectionHandlers = {
   process: {},
   listen: {
-    // listen :post (domain/billing/ledger.mesh.mx:9:5)
-    "billing.Ledger.post": $handler({
+    // listen :receipt (domain/billing/ledger.mesh.mx:9:5)
+    "billing.Ledger.receipt": $handler({
       events: [$billing$InvoicePaid$class, $billing$PaymentRecorded$class],
       run: async (event, { context }) => {
         await (($s: $HandlerScope<$billing$InvoicePaid$class | $billing$PaymentRecorded$class>) => {
@@ -49,7 +49,7 @@ export const $handlers: $SectionHandlers = {
     }),
   },
   at: {
-    "billing.Ledger.post": "domain/billing/ledger.mesh.mx:9:5",
+    "billing.Ledger.receipt": "domain/billing/ledger.mesh.mx:9:5",
     "billing.Ledger.total": "domain/billing/ledger.mesh.mx:10:5",
   },
 };

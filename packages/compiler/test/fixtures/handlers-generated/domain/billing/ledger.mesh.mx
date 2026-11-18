@@ -6,7 +6,7 @@ entity :Ledger
   attributes
     uuid :id primary-key
   handlers
-    listen :post on=[paid.InvoicePaid, recorded.PaymentRecorded] value=async ({ event }) => { await sendReceipt({ idempotencyKey: event.id, invoiceId: event.payload.invoiceId }) }
+    listen :receipt on=[paid.InvoicePaid, recorded.PaymentRecorded] value=async ({ event }) => { await sendReceipt({ idempotencyKey: event.id, invoiceId: event.payload.invoiceId }) }
     listen :total [on=recorded.PaymentRecorded] async () {
       const amount: number = event.payload.amount
       await sendReceipt({ idempotencyKey: `${amount}`, invoiceId: event.payload.invoiceId })

@@ -917,6 +917,7 @@ describe("the async context a metadata function runs in (trace context in metada
 
 describe("section handlers, handed to bindDomain (handlers design, H17 to H19)", () => {
   // As the generated `bind` hands them: `mergeHandlers` of each owner's `$handlers`, keyed `<owner FQN>.<name>`.
+  // Both owners name their handler `receipt`: the keys differ, so the merge keeps both.
   const Invoice = entity("billing.Invoice", (layer, options, frame = NO_FRAME) => Object.freeze({
     async pay(input: { readonly id: string }, context?: object) {
       const clock = frame.clock(options.clock);
@@ -937,8 +938,8 @@ describe("section handlers, handed to bindDomain (handlers design, H17 to H19)",
       at: { [renamed ?? "billing.Invoice.receipt"]: "billing/invoice.mesh.mx:19:5" },
     },
     {
-      process: { "billing.Ledger.post": { events: [InvoicePaid], run: (event: EventRecord<InvoicePaid>) => { seen.push(`post ${event.payload.invoiceId} ${event.causedBy}`); } } },
-      at: { "billing.Ledger.post": "billing/ledger.mesh.mx:7:5" },
+      process: { "billing.Ledger.receipt": { events: [InvoicePaid], run: (event: EventRecord<InvoicePaid>) => { seen.push(`ledger ${event.payload.invoiceId} ${event.causedBy}`); } } },
+      at: { "billing.Ledger.receipt": "billing/ledger.mesh.mx:7:5" },
     },
   ] as never);
 
@@ -951,7 +952,7 @@ describe("section handlers, handed to bindDomain (handlers design, H17 to H19)",
     expect(seen).toEqual([]);
     await binding.run(() => Invoice.pay({ id: "a" }));
     await binding.deliver();
-    expect(seen.sort()).toEqual(["post a null", 'receipt a {"system":true}']);
+    expect(seen.sort()).toEqual(["ledger a null", 'receipt a {"system":true}']);
     expect(state.rows.map((row) => row.name)).toEqual(["billing.InvoicePaid", "billing.InvoicePaid"]);
   });
 
@@ -963,12 +964,12 @@ describe("section handlers, handed to bindDomain (handlers design, H17 to H19)",
     await binding.deliver();
     await binding.run(() => Invoice.pay({ id: "b" }));
     await binding.deliver();
-    expect(seen.sort()).toEqual(["log b", "post b null", 'receipt b {"system":true}']);
-    const clash: EventsModule = { handlers: { process: { "billing.Ledger.post": Mesh.handler({ events: [InvoicePaid], run: () => undefined }) } } };
+    expect(seen.sort()).toEqual(["ledger b null", "log b", 'receipt b {"system":true}']);
+    const clash: EventsModule = { handlers: { process: { "billing.Ledger.receipt": Mesh.handler({ events: [InvoicePaid], run: () => undefined }) } } };
     const other = bindDomain({ Invoice, InvoicePaid }, memoryLayer({ delivery: true }).layer, { events: { bus: testBus(), load: async () => clash }, clock }, frame, section());
     const error = await rejection(() => other.deliver());
     expect((error as MeshError).code).toBe("MESH_HANDLER_OPTION");
-    expect(error.message).toBe('The process handler "billing.Ledger.post" has the name of a process handler: a handler\'s name is unique across every kind, since it keys the handler\'s progress row (one in the events module, one in billing/ledger.mesh.mx:7:5)');
+    expect(error.message).toBe('The process handler "billing.Ledger.receipt" has the name of a process handler: a handler\'s name is unique across every kind, since it keys the handler\'s progress row (one in the events module, one in billing/ledger.mesh.mx:7:5)');
   });
 
   test("renamed-from moves a section handler's progress row to its new key: events published between the two runs are handled", async () => {
@@ -981,7 +982,7 @@ describe("section handlers, handed to bindDomain (handlers design, H17 to H19)",
     seen.length = 0;
     const renamed = bindDomain({ Invoice, InvoicePaid }, layer, { events: { bus: testBus() }, clock }, frame, section("billing.Invoice.mailReceipt"));
     await renamed.deliver();
-    expect(seen.sort()).toEqual(["post c null", 'receipt c {"system":true}']);
+    expect(seen.sort()).toEqual(["ledger c null", 'receipt c {"system":true}']);
   });
 
   test("retryFailed takes a section handler's key before any delivery is started; an unknown name lists both sources' keys", async () => {
@@ -995,7 +996,7 @@ describe("section handlers, handed to bindDomain (handlers design, H17 to H19)",
     expect(await retryFailed(binding, "billing.Invoice.receipt")).toEqual({ handled: 0, failed: null });
     const error = await rejection(() => retryFailed(binding, "billing.Invoice.mailReceipt"));
     expect(error).toBeInstanceOf(FrameworkError);
-    expect(error.message).toBe('retryFailed("billing.Invoice.mailReceipt"): no handler named "billing.Invoice.mailReceipt" is registered (by the events module or a handlers section); the handlers are billing.Invoice.receipt, billing.Ledger.post, log');
+    expect(error.message).toBe('retryFailed("billing.Invoice.mailReceipt"): no handler named "billing.Invoice.mailReceipt" is registered (by the events module or a handlers section); the handlers are billing.Invoice.receipt, billing.Ledger.receipt, log');
   });
 });
 

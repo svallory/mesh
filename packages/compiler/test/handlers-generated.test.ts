@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import { Glob } from "bun";
 import { buildModel } from "../src/front-end/build.ts";
 import { EmitError, generateFiles, writeGeneratedFiles } from "../src/typescript/emit.ts";
+import { mergeHandlers } from "@meshfw/runtime";
 import { closeTypeServer } from "./type-server.ts";
 import { checkTypes, configOf } from "./generated.ts";
 
@@ -88,10 +89,20 @@ describe("the handlers generator", () => {
     }
   });
 
-  test("the same handler name in two owners gives two keys, and an aggregate named like an entity of its module is MESH_EMIT_PATH", async () => {
+  test("the same handler name in two owners gives two keys that merge, and an aggregate named like an entity of its module is MESH_EMIT_PATH", async () => {
     const files = await fixtureFiles();
     const generated = await generate(files);
+    // Invoice and Ledger both declare `listen :receipt`.
+    expect(files[`${MODULE}/invoice.mesh.mx`]).toContain("listen :receipt ");
+    expect(files[`${MODULE}/ledger.mesh.mx`]).toContain("listen :receipt ");
     expect(contents(generated, `.mesh/${MODULE}/invoice.handlers.ts`)).toContain('"billing.Invoice.receipt": $handler(');
+    expect(contents(generated, `.mesh/${MODULE}/ledger.handlers.ts`)).toContain('"billing.Ledger.receipt": $handler(');
+    // At run time the binding's merge keeps both keys (no "a key two hold" FrameworkError).
+    const merged = mergeHandlers([
+      { listen: { "billing.Invoice.receipt": { events: [], run: () => undefined } }, at: { "billing.Invoice.receipt": "a" } },
+      { listen: { "billing.Ledger.receipt": { events: [], run: () => undefined } }, at: { "billing.Ledger.receipt": "b" } },
+    ] as never) as { listen: object };
+    expect(Object.keys(merged.listen).sort()).toEqual(["billing.Invoice.receipt", "billing.Ledger.receipt"]);
     const renamed = { ...files, [`${MODULE}/billing.mesh.mx`]: files[`${MODULE}/billing.mesh.mx`]!.replace("aggregate :Billing", "aggregate :Ledger") };
     const error = await generate(renamed).then(() => undefined, (thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(EmitError);
@@ -126,7 +137,7 @@ describe("the generated handlers type-check", () => {
 
   test("a body that reads a field no listed event has is a type error in the generated file", async () => {
     const files = await fixtureFiles();
-    // `amount` is a field of PaymentRecorded only, and `post` also lists InvoicePaid.
+    // `amount` is a field of PaymentRecorded only, and `receipt` also lists InvoicePaid.
     const ledger = files[`${MODULE}/ledger.mesh.mx`]!.replace("invoiceId: event.payload.invoiceId }) }", "invoiceId: `${event.payload.amount}` }) }");
     expect(ledger).not.toBe(files[`${MODULE}/ledger.mesh.mx`]);
     const { root, checked } = await project({ [`${MODULE}/ledger.mesh.mx`]: ledger });
