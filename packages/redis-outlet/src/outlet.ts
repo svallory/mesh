@@ -253,13 +253,21 @@ class Outlet {
   async #send(event: EventRecord, open: Open): Promise<boolean> {
     const { stream, maxLength } = this.options;
     const id = `${event.position}-0`;
+    // Built once, before the retries: a payload JSON cannot encode (a bigint or a cycle an upcast returned) is no Redis
+    // error to retry for ever, so it ends the subscription.
+    let fields: string[];
+    try {
+      fields = fieldsOf(event);
+    } catch (error) {
+      throw new FrameworkError(`redisOutlet: the event ${event.name} at position ${event.position} cannot be written as JSON: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
     let delay = FIRST_DELAY;
     for (;;) {
       if (open.ended || this.#closing) return false;
       try {
         await this.#connected();
         try {
-          await this.client.send("XADD", [stream, "MAXLEN", "~", String(maxLength), id, ...fieldsOf(event)]);
+          await this.client.send("XADD", [stream, "MAXLEN", "~", String(maxLength), id, ...fields]);
           return true;
         } catch (error) {
           if (!isRefusal(error)) throw error;
@@ -268,7 +276,7 @@ class Outlet {
         const entry = Array.isArray(entries) ? entries[0] : undefined;
         if (entry !== undefined && fieldOf(entry, "id") === event.id) return true;
         const found = entry === undefined ? "missing" : `the event ${fieldOf(entry, "id") ?? "(no id field)"}${fieldOf(entry, "name") ? ` (${fieldOf(entry, "name")})` : ""}`;
-        throw new FrameworkError(`redisOutlet: the stream ${stream} holds entries this outbox did not write (its top id is above position ${event.position}, and entry ${id} is ${found}); a restored or reset database, or two applications on one stream key: use a new stream key`);
+        throw new FrameworkError(`redisOutlet: the stream ${stream} holds entries this outbox did not write (its top id is at or above position ${event.position}, and entry ${id} is ${found}); a restored or reset database, or two applications on one stream key: use a new stream key`);
       } catch (error) {
         if (error instanceof FrameworkError) throw error;
         this.#report(error);

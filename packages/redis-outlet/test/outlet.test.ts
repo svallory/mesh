@@ -136,6 +136,18 @@ describeServer("redisOutlet against Redis", () => {
     await until(async () => (await outletConnections(client, stream)) === 0, "the outlet's connection is closed");
   });
 
+  test("by default a first open starts now: an event published before it is not sent", async () => {
+    const { binding, paid } = await freshBinding(project());
+    const stream = key("now");
+    await paid();
+    const outlet = await redisOutlet(binding, { url: redisUrl!, stream, events: [PAID], maxLength: 1000 });
+    const second = await paid();
+    await binding.deliver();
+    await until(async () => (await position(binding, outlet.name)) === 4, "the outlet acknowledged the second InvoicePaid");
+    expect((await entries(client, stream)).map((entry) => JSON.parse(entry.fields.payload!).invoiceId)).toEqual([second]);
+    await outlet.close();
+  });
+
   test("skipped rows are acknowledged every 100, and the outbox deletes them under until-delivered", async () => {
     const { binding, draft, layer } = await freshBinding(project());
     const outlet = await redisOutlet(binding, { url: redisUrl!, stream: key("skips"), events: [PAID], maxLength: 1000 });
@@ -191,7 +203,7 @@ describeServer("redisOutlet against Redis", () => {
     await newer.paid();
     await newer.binding.deliver();
     const reason = await outlet.done;
-    const message = `redisOutlet: the stream ${stream} holds entries this outbox did not write (its top id is above position 2, and entry 2-0 is the event ${kept!.fields.id} (${PAID})); a restored or reset database, or two applications on one stream key: use a new stream key`;
+    const message = `redisOutlet: the stream ${stream} holds entries this outbox did not write (its top id is at or above position 2, and entry 2-0 is the event ${kept!.fields.id} (${PAID})); a restored or reset database, or two applications on one stream key: use a new stream key`;
     expect(reason).toEqual(new FrameworkError(message));
     expect(errors).toEqual([new FrameworkError(message)]);
     expect(await position(newer.binding, outlet.name)).toBe(0);
@@ -210,7 +222,7 @@ describeServer("redisOutlet against Redis", () => {
     await paid();
     await binding.deliver();
     expect(await outlet.done).toEqual(new FrameworkError(
-      `redisOutlet: the stream ${stream} holds entries this outbox did not write (its top id is above position 2, and entry 2-0 is missing); a restored or reset database, or two applications on one stream key: use a new stream key`));
+      `redisOutlet: the stream ${stream} holds entries this outbox did not write (its top id is at or above position 2, and entry 2-0 is missing); a restored or reset database, or two applications on one stream key: use a new stream key`));
     expect(await position(binding, outlet.name)).toBe(0);
   });
 
