@@ -281,9 +281,9 @@ describe("imports of a mixin (R9, R11, R12, R21, R22)", () => {
     const entity = build({ ...AUDITED_PROJECT, "billing/customer.mesh.mx": "entity :Customer\n  attributes\n    uuid :id primary-key\n",
       "billing/invoice.mesh.mx": invoice("", "  use mixin=Customer\n", `${IMPORT}import { Customer } from "./customer.mesh.mx"\n`) });
     expect(errors(entity)).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:4:12", "Customer is not an imported mixin."]]);
-    // A refused import is reported once, at the import: Mesh's own mixins from "meshfw/mixins" are not built yet.
-    const shipped = build({ "billing/invoice.mesh.mx": invoice("", "  use mixin=Timestamps\n", 'import { Timestamps } from "meshfw/mixins"\n') });
-    expect(errors(shipped).map((d) => d.slice(0, 2))).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:1:0"]]);
+    // A refused import is reported once, at the import (a package path no file answers).
+    const refused = build({ "billing/invoice.mesh.mx": invoice("", "  use mixin=Timestamps\n", 'import { Timestamps } from "mixins"\n') });
+    expect(errors(refused).map((d) => d.slice(0, 2))).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:1:0"]]);
     expect(errors(build({ ...AUDITED_PROJECT, "billing/invoice.mesh.mx": invoice("", "  use mixin=Invoice\n") }))).toEqual([["MESH_UNKNOWN_IMPORT", "billing/invoice.mesh.mx:3:12", "Invoice is not an imported mixin: the file declares Invoice as an entity."]]);
   });
   test("a namespace alias alone names the file, not its mixin", () => {
@@ -338,6 +338,19 @@ describe("a lock step in a mixin's `always` block (ADR-0100, design 5.6: a line 
   test("a `set` of the locked member in the includer's update cites the mixin's lock by file", () => {
     expect(errors(lockProject("    update :pay\n      do\n        set\n          &version=() => 3\n"))).toEqual([["MESH_LOCK_MEMBER", "billing/invoice.mesh.mx:11:10",
       "`set &version` in update :pay of billing.Invoice writes the version that `lock &version` (shared/audited.mesh.mx:5) owns: the lock adds 1 on every write"]]);
+  });
+});
+
+describe("a project mixin's `set` of the member an includer's lock owns", () => {
+  test("MESH_LOCK_MEMBER in the mixin's file names the mixin, and the fix removes the `set` line", () => {
+    const result = build({
+      "shared/bumped.mesh.mx": "mixin :Bumped\n  actions\n    always types=[:update]\n      do\n        set\n          &version=() => &version + 1\n",
+      "billing/invoice.mesh.mx": invoice("    update :pay\n      do\n        lock &version\n", "  use mixin=Bumped\n", 'import { Bumped } from "../shared/bumped.mesh.mx"\n')
+        .replace("    decimal :amount min=0\n", "    integer :version default=1\n"),
+    });
+    expect(result.diagnostics.map((d) => [d.code, `${d.position.file}:${d.position.line}:${d.position.column}`, d.message, d.fix])).toEqual([["MESH_LOCK_MEMBER", "shared/bumped.mesh.mx:6:10",
+      "`set &version` of the mixin Bumped, in update :pay of billing.Invoice, writes the version that `lock &version` (billing/invoice.mesh.mx:10) owns: the lock adds 1 on every write",
+      "remove the `set` line"]]);
   });
 });
 

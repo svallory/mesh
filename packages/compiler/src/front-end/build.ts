@@ -57,6 +57,7 @@ import { MX_TO_MESH_CODES } from "./diagnostic-codes.ts";
 import { MESH_EXTENSIONS } from "./extensions.ts";
 import { MESH_DIALECT } from "./dialect.ts";
 import { architectureFileText, isArchitectureFileName, readArchitectureFile } from "./architecture-file.ts";
+import { MESHFW_MIXINS, SHIPPED_MIXIN_NAMES, shippedMixinText } from "./shipped-mixins.ts";
 import { hasMeshExtension, meshExtensionsText } from "./extensions.ts";
 import { askCallsOf, asynchronyOf, copyExpression, demotionOf, entityCallsOf, privilegedCallsOf, publishTargetsOf, scopeReachOf } from "./expression.ts";
 import { checkExpressions } from "../model/index.ts";
@@ -81,7 +82,7 @@ import { computeNeeds } from "../model/needs.ts";
 import { resolveSurfaces, type PendingExposure, type PendingSurface } from "../model/surfaces.ts";
 import { checkServices } from "../model/services.ts";
 import { aggregateNamesOf, checkArchitecture, DEFAULT_SETTINGS, type ArchitectureSettings } from "../model/architecture-rules.ts";
-import { mergeIncluders, tagIncluder } from "../model/includers.ts";
+import { markFromMixin, mergeIncluders, tagIncluder } from "../model/includers.ts";
 import { buildService } from "./services.ts";
 import {
   atomForwards,
@@ -180,8 +181,8 @@ const MESHFW = "meshfw";
  * Entity files import another file of the project by a relative path, in one of two forms: by name
  * (`import { List } from "./list…"`, `import { isStaff } from "./task.helpers"`), or as a namespace
  * (`import * as billing from "../billing/invoice…"`), whose alias the file picks and reads members of
- * (`billing.Invoice`). A default, side-effect or type-only import is neither. The one package they import from is
- * "meshfw", for `Mesh` alone, by name.
+ * (`billing.Invoice`). A default, side-effect or type-only import is neither. The packages they import from are
+ * "meshfw", for `Mesh` alone, by name, and "meshfw/mixins", for Mesh's mixins (`SHIPPED_MIXIN_NAMES`), by name.
  */
 function readImports(imports: readonly IrImport[]): {
   imports: ParsedImport[];
@@ -196,11 +197,12 @@ function readImports(imports: readonly IrImport[]): {
     // `from` and `names` are optional in MX's types and present on every authored import; a missing one is the same import-form error.
     const names = entry.names ?? [];
     const from = entry.from ?? "";
-    // A package other than "meshfw" is refused by its path below, whatever its form: the form advice is for a relative import.
-    const formed = from === MESHFW || from.startsWith("./") || from.startsWith("../");
+    // A package other than "meshfw" and "meshfw/mixins" is refused by its path below, whatever its form: the form advice is
+    // for a relative import and those two.
+    const formed = from === MESHFW || from === MESHFW_MIXINS || from.startsWith("./") || from.startsWith("../");
     const typeOnly = entry.typeOnly || names.some((name) => name.typeOnly);
     // `import * as billing from …`: one namespace binding and nothing else, from a file of the project.
-    const namespace = from !== MESHFW && names.length === 1 && names[0]!.kind === "namespace";
+    const namespace = from !== MESHFW && from !== MESHFW_MIXINS && names.length === 1 && names[0]!.kind === "namespace";
     if (
       formed && (
         !names.length ||
@@ -220,7 +222,15 @@ function readImports(imports: readonly IrImport[]): {
       };
       // From "meshfw" the one form is a named value import of `Mesh`: a default, namespace or type import gets
       // that advice, not the entity's.
-      problems.push(from === MESHFW
+      problems.push(from === MESHFW_MIXINS
+        // From "meshfw/mixins" the one form is a named import of the mixins it gives (R10).
+        ? {
+          code: "MESH_IMPORT_FORM",
+          message: `import a mixin by name: "${MESHFW_MIXINS}" gives the named exports ${SHIPPED_MIXIN_NAMES.map((name) => `\`${name}\``).join(" and ")}`,
+          offset,
+          fix: `write \`import { ${SHIPPED_MIXIN_NAMES[0]} } from "${MESHFW_MIXINS}"\``,
+        }
+        : from === MESHFW
         ? {
           code: "MESH_IMPORT_FORM",
           message: typeOnly
@@ -259,10 +269,21 @@ function readImports(imports: readonly IrImport[]): {
         });
         continue;
       }
+    } else if (from === MESHFW_MIXINS) {
+      // `import { Timestamps, Versioned } from "meshfw/mixins"`: Mesh's mixins, by the names they are declared with.
+      const other = names.find((name) => !SHIPPED_MIXIN_NAMES.includes(name.imported));
+      if (other) {
+        problems.push({
+          code: "MESH_UNKNOWN_IMPORT",
+          message: `"${MESHFW_MIXINS}" gives ${SHIPPED_MIXIN_NAMES.map((name) => `\`${name}\``).join(" and ")}, and \`${other.imported}\` is not one of them`,
+          offset: other.span.sourceStart,
+        });
+        continue;
+      }
     } else if (!from.startsWith("./") && !from.startsWith("../")) {
       problems.push({
         code: "MESH_UNKNOWN_IMPORT",
-        message: `The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh's own functions (\`import { Mesh } from "meshfw"\`)`,
+        message: `The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh's own functions (\`import { Mesh } from "meshfw"\`) or "${MESHFW_MIXINS}" for Mesh's mixins (\`import { ${SHIPPED_MIXIN_NAMES[0]} } from "${MESHFW_MIXINS}"\`)`,
         offset,
       });
       continue;
@@ -563,8 +584,13 @@ export interface MixinSource {
   root: Tag;
   /** Its file's text, for slicing function text and positions. */
   source: string;
-  /** Its file, project-relative. */
+  /** Its file, project-relative; for a shipped mixin, `meshfw/mixins/<file>`, which no position holds (`shipped`). */
   file: string;
+  /**
+   * Set for a mixin Mesh ships (`"meshfw/mixins"`): its file is no file of the project, so every position read from its
+   * lines is the `use` line that includes it (ruling D37 OD5, the mixins design's R20).
+   */
+  shipped?: true;
 }
 
 /**
@@ -603,9 +629,9 @@ const MIXIN_SCOPE: ExpressionScope = {
  */
 const mixinKind = (declared: (from: string) => DeclaredFile | undefined): ReferenceKind => ({
   noun: "mixin",
-  declares: (from) => hasMeshExtension(from) && (declared(from)?.kind ?? "mixin") === "mixin",
-  names: (from) => declared(from)?.declares.filter((d) => d.kind === "mixin").map((d) => d.name),
-  kindOf: (from, name) => importable(declared(from))?.find((d) => d.name === name)?.kind,
+  declares: (from) => from === MESHFW_MIXINS || (hasMeshExtension(from) && (declared(from)?.kind ?? "mixin") === "mixin"),
+  names: (from) => from === MESHFW_MIXINS ? SHIPPED_MIXIN_NAMES : declared(from)?.declares.filter((d) => d.kind === "mixin").map((d) => d.name),
+  kindOf: (from, name) => from === MESHFW_MIXINS ? (SHIPPED_MIXIN_NAMES.includes(name) ? "mixin" : undefined) : importable(declared(from))?.find((d) => d.name === name)?.kind,
   code: "MESH_UNKNOWN_IMPORT",
 });
 
@@ -818,8 +844,17 @@ export function fileImports(
   declaredFile: (from: string) => DeclaredFile | undefined,
   at: (offset: number) => SourcePosition,
   fail: (code: string, message: string, at: SourcePosition, fix?: string) => void,
+  /** Whether the file may import Mesh's mixins: an entity file includes them with `use mixin=`, no other file does. */
+  mixins = false,
 ) {
-  const parsed = readImports(irImports);
+  // A file that includes no mixin refuses "meshfw/mixins" by its path, before its form or names are read: the form or name
+  // advice would lead to this refusal.
+  const offMixins = mixins ? [] : irImports.filter((entry) => entry.from === MESHFW_MIXINS);
+  const parsed = readImports(offMixins.length ? irImports.filter((entry) => !offMixins.includes(entry)) : irImports);
+  for (const entry of offMixins) {
+    fail("MESH_UNKNOWN_IMPORT", `"${MESHFW_MIXINS}" gives an entity file Mesh's mixins, which it includes with \`use mixin=Name\`, and this file includes none`, at(entry.span.sourceStart), "remove the import");
+    parsed.refused.push(...(entry.names ?? []).map((name) => name.local));
+  }
   for (const problem of parsed.problems) {
     // An import of the architecture file in a form readImports refuses (type-only, default, side-effect) is the R8 error
     // too: the form advice would point to a named import, which R8 refuses as well, of a file that declares nothing.
@@ -835,8 +870,8 @@ export function fileImports(
         identifiers: i.names,
         ...(renames ? { imported: i.bindings.map((binding) => binding.imported) } : {}),
         from: i.from,
-        // A project mixin file binds a mixin: no value and no helper, read only by a `use mixin=` line (`Import.mixin`).
-        ...(i.from === MESHFW ? { mesh: true as const } : hasMeshExtension(i.from) ? (declaredFile(i.from)?.kind === "mixin" ? { mixin: true as const } : {}) : { helper: true as const }),
+        // Mesh's mixins and a project mixin file bind a mixin: no value and no helper, read only by a `use mixin=` line (`Import.mixin`).
+        ...(i.from === MESHFW ? { mesh: true as const } : i.from === MESHFW_MIXINS || (hasMeshExtension(i.from) && declaredFile(i.from)?.kind === "mixin") ? { mixin: true as const } : hasMeshExtension(i.from) ? {} : { helper: true as const }),
         ...(i.namespace ? { namespace: true as const } : {}),
         position: at(i.offset),
       };
@@ -982,7 +1017,7 @@ function buildEntity(
   const ownEvents = inlineDeclared.filter((declaration) => declaration.kind === "event").map(({ name }) => ({ name, from: self }));
   const ownCommands = inlineDeclared.filter((declaration) => declaration.kind === "command").map(({ name }) => ({ name, from: self }));
   const ownKind = new Map<string, DeclarationKind>([...inlineDeclared.map(({ kind, name }) => [name, kind] as const).reverse(), [entity.name, "entity"]]);
-  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail);
+  const { imports, importNames, duplicates, bindings } = fileImports(irImports, file, ownKind, importDetails, declaredFile, at, fail, true);
   entity.imports = imports;
   const pending: {
     ref: MemberRef;
@@ -1082,13 +1117,17 @@ function buildEntity(
       fail("MESH_DUPLICATE_MEMBER", `Duplicate use of the mixin ${mixin.name}: this entity already uses it`, tag, "remove this line");
       continue;
     }
+    const usePosition = pos(tag);
     sources.push({
       sections: tags(mixin.root.children),
       source: mixin.source,
-      at: (offset) => positionAt(mixin.source, mixin.file, offset),
+      // A shipped mixin's file is no file of the project: every position its lines give is the `use` line (R20).
+      at: mixin.shipped ? () => usePosition : (offset) => positionAt(mixin.source, mixin.file, offset),
       scope: MIXIN_SCOPE,
-      use: { name: mixin.name, position: pos(tag), mixin },
+      use: { name: mixin.name, position: usePosition, mixin },
     });
+    // A shipped mixin's positions are in the includer's own file, so nothing found there needs naming the includer (R19).
+    if (mixin.shipped) continue;
     if (!includersOf.has(mixin.file)) includersOf.set(mixin.file, new Set());
     includersOf.get(mixin.file)!.add(entity.fqn);
   }
@@ -1575,11 +1614,13 @@ function buildEntity(
       }
       for (const tag of tags(actionSection.children)) {
         if (tag.name === "always") {
-          entity.always.push({
+          const block: Always = {
             ...scope(tag),
             ...body(tag, true),
             position: pos(tag),
-          } satisfies Always);
+          };
+          if (src.use) markFromMixin(block, src.use.name, src.use.mixin.shipped === true);
+          entity.always.push(block);
           continue;
         }
         const kind = tag.name as ActionType;
@@ -2389,6 +2430,26 @@ const NO_TARGETS: TargetLookup = Object.freeze({
   hostFilterKey: () => undefined,
   moduleSegments: () => [],
 });
+/** The shipped mixins parsed so far, by name: each is parsed on the first build that uses it, never at import time. */
+const shippedMixins = new Map<string, MixinSource>();
+/**
+ * The mixin `"meshfw/mixins"` gives under `name`, or undefined for a name it does not give (the import check reports it).
+ * A diagnostic in a shipped file is a bug in Mesh, which `test/shipped-mixins.test.ts` catches: it throws.
+ */
+export function shippedMixin(name: string): MixinSource | undefined {
+  const cached = shippedMixins.get(name);
+  if (cached) return cached;
+  const text = shippedMixinText(name);
+  if (!text) return undefined;
+  const parsed = parseEntitySource(text.source, text.file);
+  const root = parsed.ir ? tags(parsed.ir.body)[0] : undefined;
+  if (parsed.diagnostics.length || root?.name !== "mixin" || atomOf(attr(root, "name"))?.name !== name)
+    throw new Error(`The shipped mixin ${name} (${text.file}) does not parse as \`mixin :${name}\`: ${parsed.diagnostics.map((d) => d.message).join("; ")}`);
+  const mixin: MixinSource = { name, root, source: text.source, file: text.file, shipped: true };
+  shippedMixins.set(name, mixin);
+  return mixin;
+}
+
 export function parseEntitySource(source: string, file: string, extraTags?: Readonly<Record<string, CustomTag>>) {
   const scan = scanCached(file, { targets: NO_TARGETS });
   const customTags = extraTags ? { ...scan.customTags, ...extraTags } : scan.customTags;
@@ -2778,6 +2839,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
             declaredNames,
             { events, commands },
             (from, exported) => {
+              if (from === MESHFW_MIXINS) return shippedMixin(exported);
               const mixin = mixinsByPath.get(resolve(rootPath, dirname(file), from));
               // A name the file does not declare is the import check's `MESH_UNKNOWN_IMPORT` (R11): nothing is read.
               return mixin?.name === exported ? mixin : undefined;
@@ -2950,7 +3012,7 @@ export function buildModel(project: ProjectDescription): BuildResult {
   const aggregateOwners = new Set(aggregates.map(({ file }) => file));
   for (const entity of [...document.entities, ...aggregates, ...surfaceImports, ...services]) {
     for (const imported of entity.imports) {
-      if (imported.mesh) continue; // "meshfw" is a package, not a file of the project
+      if (imported.mesh || imported.from === MESHFW_MIXINS) continue; // "meshfw" and "meshfw/mixins" are a package, not files of the project
       const target = resolve(rootPath, dirname(entity.file), imported.from);
       // Nothing imports a surface file (R4, R5): neither the domain nor another surface.
       if (hasMeshExtension(imported.from) && (surfacePaths.has(target) || declaredByPath.get(target)?.kind === "surface")) {

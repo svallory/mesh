@@ -1,7 +1,9 @@
 import { User } from "./user.mesh.mx"
 import { Comment } from "./comment.mesh.mx"
+import { Timestamps } from "meshfw/mixins"
 
 entity :Post table="posts"
+  use mixin=Timestamps
   attributes
     uuid :id primary-key
     string :title min=1 max=200
@@ -14,8 +16,6 @@ entity :Post table="posts"
     datetime :publishedAt nullable
     enum :state values=[:draft, :published] default=:draft
     json :metadata default={}
-    timestamp :insertedAt on=:create
-    timestamp :updatedAt on=:update
   relationships
     belongs-to :author entity=User
     has-many :comments entity=Comment

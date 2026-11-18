@@ -157,7 +157,7 @@ test("a broken line rule reports Mesh's code and message and the line of the rul
       expect(caught).toBeInstanceOf(InvalidInputError);
       const error = caught as InvalidInputError;
       expect([error.code, error.issues[0]!.code, error.issues[0]!.message]).toEqual(["invalid_input", "too_short", "must be at least 1 character"]);
-      expect(error.issues).toEqual([{ label: null, code: "too_short", path: ["title"], message: "must be at least 1 character", source: { file: "src/domain/blog/post.mesh.mx", line: 7, column: 5 }, details: null }]);
+      expect(error.issues).toEqual([{ label: null, code: "too_short", path: ["title"], message: "must be at least 1 character", source: { file: "src/domain/blog/post.mesh.mx", line: 9, column: 5 }, details: null }]);
       const long = await Post.create({ title: "x".repeat(201), author: alice.id }, context).catch((error: unknown) => error);
       expect((long as InvalidInputError).issues.map((issue) => [issue.code, issue.message])).toEqual([["too_long", "must be at most 200 characters"]]);
     });

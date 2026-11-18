@@ -1278,7 +1278,7 @@ describe("Mesh's own functions are members of the Mesh import", () => {
     expect(problems(withImport('import { defineConfig } from "meshfw"')).map((p) => p.code)).toEqual(["MESH_UNKNOWN_IMPORT"]);
     // Any other package, Mesh's run-time library included, is refused as before.
     expect(problems(withImport('import { Mesh } from "@meshfw/runtime"')).map((p) => [p.code, p.message])).toEqual([[
-      "MESH_UNKNOWN_IMPORT", 'The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh\'s own functions (`import { Mesh } from "meshfw"`)',
+      "MESH_UNKNOWN_IMPORT", 'The import path must be relative (start with ./ or ../), or be "meshfw" for Mesh\'s own functions (`import { Mesh } from "meshfw"`) or "meshfw/mixins" for Mesh\'s mixins (`import { Timestamps } from "meshfw/mixins"`)',
     ]]);
     // `Mesh` under the entity's name, or the name another import takes.
     source = withImport('import { Mesh as Task } from "meshfw"');
