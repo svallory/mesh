@@ -46,13 +46,13 @@ What the mixin declares joins the entity as if it were written there: `Invoice` 
 
 **As if written there.** A mixin's lines are read with the entity that uses it:
 
-- a `&name` in a mixin is a member of that entity, so a mixin may read a member only its includers declare (`&amount` above), and an includer that lacks it gets `MESH_UNKNOWN_MEMBER` naming the entity;
+- a `&name` in a mixin is a member of that entity, so a mixin may read a member only its includers declare (a mixin's `check :positive that=() => &amount > 0` reads each includer's `amount`), and an includer that lacks it gets `MESH_UNKNOWN_MEMBER` naming the entity;
 - a mixin's `actions auto=[...]` generates actions of each includer, and its `always` block covers the includer's actions (an `actions=` list may name an action only the includer declares);
 - a computed field or rollup of a mixin reads the includer's relationships;
 - a named check of a mixin's `checks` section is used by the includer's `validate` with `check &name`;
 - a mixin's policy covers the includer's actions as one written in the entity does. Policies are fail-closed, so a mixin's policy can authorize actions of every entity that uses it: read a mixin's policies before you use it.
 
-A mistake in a mixin's lines is reported once, in the mixin's file. When only some of the entities that use it have it (one includer's `amount` is a string, say), the message starts by naming them: `in billing.Quote, which uses this mixin, ...`.
+A mistake in a mixin's lines is reported in the mixin's file, once for all the entities that use it. When only some of them have it (one includer's `amount` is a string, say), most messages start by naming them: `in billing.Quote, which uses this mixin, ...`. A message that names the entity itself comes once for each entity it applies to: `MESH_UNKNOWN_MEMBER` (`&amount is not a member of billing.Quote.`), `MESH_POLICY_NO_CHECKS` for a mixin's policy with no `authorize-if` or `forbid-if`, and an `always` block's `actions=` that names a read (`MESH_OPTION_VALUE`).
 
 ## What a mixin cannot hold or do
 
