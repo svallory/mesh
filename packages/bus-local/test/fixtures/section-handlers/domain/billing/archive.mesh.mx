@@ -1,0 +1,13 @@
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import { control, record } from "./record"
+
+entity :Archive
+  attributes
+    uuid :id primary-key
+  actions
+    create :file
+  handlers
+    listen :file [on=InvoicePaid] async ({ event, context }) {
+      record(`archive ${event.position}`)
+      if (control.archive) await Archive.file({}, context)
+    }

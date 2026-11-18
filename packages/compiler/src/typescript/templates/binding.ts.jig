@@ -18,6 +18,9 @@ import {
   bindingInScope as $bindingInScope,
   connectBinding as $connectBinding,
   FrameworkError as $FrameworkError,
+@if(handlerModules.length)
+  mergeHandlers as $mergeHandlers,
+@end
   releaseBinding as $releaseBinding,
   settled as $settled,
   type AsyncFrame as $AsyncFrame,
@@ -70,6 +73,9 @@ import {
 @end
 } from "@meshfw/runtime";
 import * as $domain from {{ domainFromLiteral }};
+@each(handlers in handlerModules)
+import { $handlers as {{ handlers.local }} } from {{ handlers.fromLiteral }};
+@end
 import type { $Partial, $Promise } from "./$globals";
 @if(events)
 import type { DomainEvent } from "./index";
@@ -93,7 +99,11 @@ const $frame: $AsyncFrame = new $AsyncLocalStorage<unknown>();
  */
 export function bind(layer: $DataLayer, options: $BindOptions = {}): Binding {
   // The walk runs here, not when this file loads, so every barrel has finished loading.
+@if(handlerModules.length)
+  return $bindDomain($domain, layer, options, $frame, $mergeHandlers({{ handlersLiteral }}));
+@else
   return $bindDomain($domain, layer, options, $frame);
+@end
 }
 
 let $defaultBinding: Binding | undefined;

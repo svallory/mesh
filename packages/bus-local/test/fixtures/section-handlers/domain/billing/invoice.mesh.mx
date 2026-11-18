@@ -1,0 +1,35 @@
+import { InvoicePaid } from "./invoice-paid.mesh.mx"
+import { ReceiptSent } from "./receipt-sent.mesh.mx"
+import { record } from "./record"
+import { Mesh } from "meshfw"
+
+entity :Invoice
+  attributes
+    uuid :id primary-key
+    boolean :paid default=false
+    boolean :receiptSent default=false
+  actions auto=[:read]
+    create :open
+    update :pay
+      do
+        set
+          &paid=true
+        publish=() => new InvoicePaid({ invoiceId: &id })
+    update :markReceiptSent
+      do
+        set
+          &receiptSent=true
+        publish=() => new ReceiptSent({ invoiceId: &id })
+  policies
+    policy :anyone actions=[&open, &read, &pay]
+      authorize-if=() => true
+    policy :system actions=[&markReceiptSent]
+      authorize-if=({ context }) => Mesh.isSystem(context)
+  handlers
+    process :sendReceipt [on=InvoicePaid] async ({ event, context }) {
+      record(`process ${event.position} ${event.name} ${JSON.stringify(context)}`)
+      await Invoice.markReceiptSent({ id: event.payload.invoiceId }, context)
+    }
+    listen :trace [on=[InvoicePaid, ReceiptSent]] ({ event }) {
+      record(`listen ${event.position} ${event.name} ${event.causedBy === null ? "-" : "caused"}`)
+    }

@@ -1,5 +1,7 @@
 import { relative } from "node:path";
 import type { EmitInput } from "../emit.ts";
+import { compareText } from "../emitters/order.ts";
+import { handlerOwners, handlersLocal, handlersPath } from "./handlers.ts";
 import { DOMAIN_FOLDER } from "./inputs.ts";
 
 /**
@@ -42,6 +44,14 @@ export interface BindingView {
    * statement written by hand; false leaves the file as it was.
    */
   readonly rawSql: boolean;
+  /**
+   * One per entity or aggregate whose `handlers` section has a line, by path: its handlers file, quoted
+   * (`"./domain/billing/invoice.handlers"`), and the local its `$handlers` is imported under (`$billing$Invoice$handlers`).
+   * `bind` hands them to `bindDomain` merged (`mergeHandlers`); empty leaves the file as it was.
+   */
+  readonly handlerModules: readonly { readonly fromLiteral: string; readonly local: string }[];
+  /** The locals of `handlerModules` as the array `mergeHandlers` takes: `[$billing$Invoice$handlers]`. */
+  readonly handlersLiteral: string;
 }
 
 /** A module specifier relative to the output folder, quoted: `"./domain/blog/post.actions"`. */
@@ -54,6 +64,10 @@ export const declaresRawSql = (input: EmitInput): boolean =>
 /** The binding view of the whole model. Pure and synchronous. */
 export function bindingView(input: EmitInput): BindingView {
   const { config } = input;
+  const handlerModules = handlerOwners(input.document)
+    .map((owner) => ({ path: handlersPath(owner), local: handlersLocal(owner) }))
+    .sort((a, b) => compareText(a.path, b.path))
+    .map(({ path, local }) => ({ fromLiteral: quote(path), local }));
   const events = (input.document.events?.length ?? 0) > 0;
   const capabilities: readonly string[] = config.events?.bus?.manifest.capabilities ?? [];
   const configModule = relative(config.output, config.configFile).replace(/\\/g, "/").replace(/\.ts$/, "");
@@ -66,5 +80,7 @@ export function bindingView(input: EmitInput): BindingView {
     multiProcess: events && capabilities.includes("multi-process"),
     deadLetters: events && capabilities.includes("dead-letters"),
     rawSql: declaresRawSql(input),
+    handlerModules,
+    handlersLiteral: `[${handlerModules.map(({ local }) => local).join(", ")}]`,
   };
 }

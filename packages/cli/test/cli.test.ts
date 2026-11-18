@@ -599,7 +599,7 @@ describe("the data adapter's build half in mesh build", () => {
 
 describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
   const templates = join(repo, "packages/compiler/src/typescript/templates");
-  const names = ["types.ts.jig", "validators.ts.jig", "declaration.ts.jig", "concept.ts.jig", "expressions.ts.jig", "load.ts.jig", "actions.ts.jig", "service-inputs.ts.jig", "service.ts.jig", "binding.ts.jig", "module.ts.jig", "surface.ts.jig", "index.ts.jig", "globals.ts.jig"];
+  const names = ["types.ts.jig", "validators.ts.jig", "declaration.ts.jig", "concept.ts.jig", "expressions.ts.jig", "handlers.ts.jig", "load.ts.jig", "actions.ts.jig", "service-inputs.ts.jig", "service.ts.jig", "binding.ts.jig", "module.ts.jig", "surface.ts.jig", "index.ts.jig", "globals.ts.jig"];
   const summary = "0 errors, 0 warnings\n";
 
   test("writes every template Mesh ships, then a second run is a no-op", async () => {
@@ -635,7 +635,7 @@ describe("mesh export generators (roadmap Jig port, acceptance 3)", () => {
     const root = await project();
     await mkdir(join(root, ".mesh-generators"));
     await writeFile(join(root, ".mesh-generators/types.ts.jig"), await readFile(join(templates, "types.ts.jig")));
-    expect(await run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/declaration.ts.jig\nwrote .mesh-generators/concept.ts.jig\nwrote .mesh-generators/expressions.ts.jig\nwrote .mesh-generators/load.ts.jig\nwrote .mesh-generators/actions.ts.jig\nwrote .mesh-generators/service-inputs.ts.jig\nwrote .mesh-generators/service.ts.jig\nwrote .mesh-generators/binding.ts.jig\nwrote .mesh-generators/module.ts.jig\nwrote .mesh-generators/surface.ts.jig\nwrote .mesh-generators/index.ts.jig\nwrote .mesh-generators/globals.ts.jig\n" });
+    expect(await run(root, "export", "generators")).toEqual({ code: 0, stderr: summary, stdout: "wrote .mesh-generators/validators.ts.jig\nwrote .mesh-generators/declaration.ts.jig\nwrote .mesh-generators/concept.ts.jig\nwrote .mesh-generators/expressions.ts.jig\nwrote .mesh-generators/handlers.ts.jig\nwrote .mesh-generators/load.ts.jig\nwrote .mesh-generators/actions.ts.jig\nwrote .mesh-generators/service-inputs.ts.jig\nwrote .mesh-generators/service.ts.jig\nwrote .mesh-generators/binding.ts.jig\nwrote .mesh-generators/module.ts.jig\nwrote .mesh-generators/surface.ts.jig\nwrote .mesh-generators/index.ts.jig\nwrote .mesh-generators/globals.ts.jig\n" });
   }, 30_000);
 
   test("a differing template stops the export: nothing is written, the file is listed, exit 1", async () => {
