@@ -21,7 +21,9 @@ const sampleRow = { id: "00000000-0000-4000-8000-000000000001", title: "First", 
   at: new Date("2026-01-01T00:00:00.123Z"), status: "draft", optional: null };
 
 // Contract v0's checks run in `contract.test.ts`, inside the v1 suite (`dataLayerConformanceV1` spreads them), over a
-// memory and a file database; every attribute type's round trip through this adapter is `emitted.test.ts`.
+// memory and a file database, over an id/title table. Every attribute type's insert-and-read round trip through this
+// adapter is `emitted.test.ts`; an update of a boolean or a timestamp through `updateByKey` is no longer
+// conformance-checked on SQLite (layer.ts converts no values itself, so the risk is low).
 
 async function withLayer(run: (layer: ReturnType<typeof sqlite>) => Promise<void>) {
   const layer = sqlite({ file: ":memory:" });
