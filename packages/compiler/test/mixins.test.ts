@@ -206,6 +206,15 @@ describe("a mixin's actions, policies and computed fields cover the includer (R1
     const twice = build({ "shared/keyed.mesh.mx": "mixin :Keyed\n  attributes\n    uuid :id primary-key\n", "billing/invoice.mesh.mx": 'import { Keyed } from "../shared/keyed.mesh.mx"\nentity :Invoice\n  use mixin=Keyed\n  attributes\n    uuid :id primary-key\n' });
     expect(errors(twice).map((d) => d.slice(0, 2))).toEqual([["MESH_PRIMARY_KEY", "billing/invoice.mesh.mx:2:0"], ["MESH_DUPLICATE_MEMBER", "billing/invoice.mesh.mx:3:2"]]);
   });
+  test("a referrer reached through a mixin's `always` block is cited by the block's file", () => {
+    const result = build({
+      "shared/audited.mesh.mx": "mixin :Audited\n  actions\n    always types=[:update]\n      validate\n        check &positive\n",
+      "billing/invoice.mesh.mx": invoice('  checks\n    check :positive that=({ input }) => input.amount !== null code="p" message="p"\n    update :pay\n      input\n        &amount\n    update :touch\n')
+        .replace("  actions auto=[:read]\n", "").replace("    update :pay\n", "  actions auto=[:read]\n    update :pay\n"),
+    });
+    expect(errors(result)).toEqual([["MESH_CHECK_INPUT", "billing/invoice.mesh.mx:8:40",
+      "`input.amount` is read by a check that update :touch uses through the `always` block at shared/audited.mesh.mx:3, and update :touch takes no `amount`"]]);
+  });
   test("a named check reached through a mixin's `always` block and the includer's own `validate` (D25(1)) cites the block's file", () => {
     const result = build({
       "shared/audited.mesh.mx": 'mixin :Audited\n  checks\n    check :positive that=() => &amount > 0 code="p" message="p"\n  actions\n    always types=[:update]\n      validate\n        check &positive\n',
