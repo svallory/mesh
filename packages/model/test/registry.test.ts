@@ -18,7 +18,6 @@ test("registry defines exactly the eleven v4 tags", () => {
     "timestamp",
     "json",
   ]);
-  expect(new Set(ATTRIBUTE_TYPES.map((t) => t.name)).size).toBe(11);
   expect(Object.isFrozen(ATTRIBUTE_TYPES)).toBe(true);
   for (const entry of ATTRIBUTE_TYPES) {
     expect(isAttributeTypeName(entry.name)).toBe(true);

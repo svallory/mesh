@@ -693,7 +693,10 @@ async function meshCli(root: string, ...args: string[]): Promise<{ code: number;
   return { code, stdout, stderr };
 }
 
-test.each(["domain/blog/post.actions.ts", "domain/blog/index.ts", "binding.ts", "index.ts"])("acceptance 6: mesh build --check fails on an edited byte in .mesh/%s", async (path) => {
+// One file is enough: the guard compares every generated file's bytes alike (packages/cli/src/guard.ts), and
+// packages/cli/test/cli.test.ts ("M1 test 3") pins the diagnostic for a hand edit.
+test("acceptance 6: mesh build --check fails on an edited byte in .mesh/domain/blog/post.actions.ts", async () => {
+  const path = "domain/blog/post.actions.ts";
   // Other packages check the committed example concurrently; mutate only this private copy.
   const project = resolve(import.meta.dir, "..");
   const copy = mkdtempSync(join(import.meta.dir, ".scratch-guard-"));

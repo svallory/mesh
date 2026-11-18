@@ -6,10 +6,9 @@ describe("ACTION_TYPES", () => {
     expect([...ACTION_TYPES]).toEqual(["create", "read", "update", "destroy"]);
   });
 
-  test("is frozen and has no duplicates", () => {
+  test("is frozen", () => {
     expect(Object.isFrozen(ACTION_TYPES)).toBe(true);
     expect(() => (ACTION_TYPES as unknown as string[]).push("x")).toThrow();
-    expect(new Set(ACTION_TYPES).size).toBe(ACTION_TYPES.length);
   });
 });
 
