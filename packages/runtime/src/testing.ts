@@ -9,6 +9,7 @@ export { busConformance, testBus, type BusConformanceFixture, type TestBusOption
 export { setDeliveryTiming, type DeliveryTiming } from "./deliverer.ts";
 export { rawSqlConformance, type RawSqlFixture } from "./raw-sql-conformance.ts";
 export { multiProcessConformance, type MultiProcessConformanceOptions } from "./multi-process-conformance.ts";
+export { claimRenewalConformance, type ClaimRenewalConformanceOptions } from "./claim-renewal-conformance.ts";
 export { runMultiProcessWorker, type MultiProcessFixture, type MultiProcessWorker, type MultiProcessWorkerParts } from "./bus-multi-process.ts";
 
 function gate(): { promise: Promise<void>; release: () => void } {

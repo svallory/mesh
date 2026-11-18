@@ -203,6 +203,19 @@ async function rejection(run: () => Promise<unknown>): Promise<unknown> {
   return undefined;
 }
 const ops = (tx: DataOperations) => tx as DataOperations & DeliveryOperations;
+/**
+ * `run` made again while it fails with a `DatabaseBusyError` of reason `serialization`, for a check's own transaction
+ * on the claim's row (a read of the state, another process's takeover): a renewal outside the queue (`renewClaim`)
+ * updates that row beside it, and on Postgres at `SERIALIZABLE` the transaction that waited for it then fails, as
+ * another process's would.
+ */
+async function serialized<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try { return await run(); } catch (error) {
+      if (!(error instanceof DatabaseBusyError && error.reason === "serialization") || attempt >= 20) throw error;
+    }
+  }
+}
 
 /** One database, its bindings and what their handlers saw. */
 interface World {
@@ -257,9 +270,9 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
               return positions;
             }));
           },
-          state: () => layer.transaction(async (tx) => ({
+          state: () => serialized(() => layer.transaction(async (tx) => ({
             state: await ops(tx).readDeliveryState(), handlers: await ops(tx).readHandlerProgress(), subscriptions: await ops(tx).readSubscriptionProgress(),
-          })),
+          }))),
           async outbox() {
             const out: OutboxRow[] = [];
             let after = (await layer.readOutbox!(0, 1)).deletedThrough;
@@ -696,10 +709,10 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       await start(world, binding);
       await world.publish(publisher, [Alpha, 1]);
       await until(() => positions(world, "h").length === 1, "the started deliverer handles the event of a deliver: false binding");
-      await world.layer.transaction(async (tx) => {
+      await serialized(() => world.layer.transaction(async (tx) => {
         const { generation } = await ops(tx).readDeliveryState();
         await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000bb", generation: generation + 1, host: null, pid: null, startedAt: null });
-      });
+      }));
       const [p] = await world.publish(publisher, [Alpha, 2]);
       await sleep(150);
       assert(positions(world, "h").length === 1, "a replaced deliverer handled an event");
@@ -713,15 +726,92 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
       setDeliveryTiming({ renewMs: 30 });
       const binding = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha]) } } });
       await start(world, binding);
-      await world.layer.transaction(async (tx) => {
+      await serialized(() => world.layer.transaction(async (tx) => {
         const { generation } = await ops(tx).readDeliveryState();
         await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000cc", generation, host: null, pid: null, startedAt: null });
-      });
+      }));
       await sleep(120);
       const other = world.bind({ handlers: { process: { h: world.recorder("h", [Alpha]) } } });
       const taken = await rejection(() => other.deliver());
       assert(taken instanceof DelivererTakenError && !taken.holder.thisProcess, `after a failed renewal another binding of this process was to see only the other process's claim, got ${String(taken)}`);
     });
+
+    if (!declares.has("multi-process")) {
+      /** `bus` with each instance's `onClaimLost` reported to `lost`. */
+      const watching = (bus: EventBus, lost: (error: Error) => void): EventBus => Object.freeze({
+        manifest: bus.manifest,
+        create: (core: BusCore, options: { readonly keep: "until-delivered" | "all" }) => { core.onClaimLost(lost); return bus.create(core, options); },
+      });
+      /** The claim's age by the database's clock. */
+      const claimAge = async (layer: DataLayer) => {
+        const state = await serialized(() => layer.transaction((tx) => ops(tx).readDeliveryState()));
+        return state.claim === null ? Number.POSITIVE_INFINITY : state.now.getTime() - state.claim.renewedAt.getTime();
+      };
+
+      // mesh-yd0i: the layer's queue is held for twice the lapse, as a round's or an application's transaction waiting on
+      // another connection's locks holds it (the layer counts `waitMs` from the front of its queue, and on Postgres per
+      // lock). Through `transaction` the renewal waited behind it past the lapse. A layer with `renewClaim` renews outside
+      // the queue, so the claim stays renewed while everything else waits. A layer without it (memory SQLite) has
+      // nothing to check here.
+      add("a claim renewal never waits behind the layer's other transactions: the queue held for twice the lapse loses nothing", async (world) => {
+        if (typeof world.layer.renewClaim !== "function") return;
+        setDeliveryTiming({ renewMs: 30, lapseMs: 400 });
+        let hold: Promise<void> | undefined;
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          transaction: (async (run, options) => {
+            while (hold) await hold;
+            return world.layer.transaction(run, options);
+          }) as DataLayer["transaction"],
+        });
+        let lost: unknown;
+        const binding = bindDomain(FULL, layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: world.recorder("h", [Alpha]) } } }) } }, world.frame);
+        await start(world, binding);
+        await sleep(100);
+        const ages: number[] = [];
+        hold = (async () => {
+          for (const end = Date.now() + 800; Date.now() < end;) {
+            // Read beside the held queue: the claim's age by the database's clock.
+            ages.push(await claimAge(world.layer));
+            await sleep(50);
+          }
+        })().finally(() => { hold = undefined; });
+        await hold;
+        assert(lost === undefined, `a queue held for twice the lapse lost the claim: ${String(lost)}`);
+        assert(ages.length > 0 && Math.max(...ages) < 400, `the claim stayed renewed while the queue was held, ages ${JSON.stringify(ages)}`);
+      });
+
+      // A renewal that never settles (a connection that stopped answering) is counted from when it was issued: once the
+      // claim has lapsed it is lost, instead of waiting on the renewal for good while another process may claim.
+      add("a claim renewal outside the queue still unsettled when the claim lapses loses the claim with MESH_DELIVERER_LOST", async (world) => {
+        setDeliveryTiming({ renewMs: 30, lapseMs: 300 });
+        let hanging = false;
+        let calls = 0;
+        const layer: DataLayer = Object.freeze({
+          ...world.layer,
+          renewClaim: (runId: string, generation: number, options: { readonly deadline: number }) => {
+            calls++;
+            if (hanging) return new Promise<boolean>(() => {});
+            return world.layer.renewClaim
+              ? world.layer.renewClaim(runId, generation, options)
+              : world.layer.transaction((tx) => ops(tx).renewClaim(runId, generation));
+          },
+        });
+        let lost: unknown;
+        const binding = bindDomain(FULL, layer, { events: { bus: watching(world.bus, (error) => { lost = error; }), keep: world.keep, load: async () => ({ handlers: { process: { h: world.recorder("h", [Alpha]) } } }) } }, world.frame);
+        await start(world, binding);
+        await sleep(100);
+        assert(lost === undefined, `renewals that settle lost nothing, got ${String(lost)}`);
+        assert(calls > 0, "core renewed the claim through the layer's renewClaim");
+        hanging = true;
+        const started = Date.now();
+        await until(() => lost !== undefined, "the hanging renewal lost the claim", 3000);
+        const took = Date.now() - started;
+        const error = lost as unknown;
+        assert(error instanceof DelivererLostError && /renewal of the claim was still unsettled when the claim lapsed/.test(error.message), String(error));
+        assert(took < 300 + 30 + 500, `lost within the lapse and the grace, after ${took} ms`);
+      });
+    }
 
     // ---- registration ----
 
@@ -1493,10 +1583,10 @@ export function busConformance(fixture: BusConformanceFixture): Record<string, (
         const binding = world.bind({});
         await start(world, binding);
         const subscription: Subscription = await subscribe(binding, { name: "s" }, () => {});
-        await world.layer.transaction(async (tx) => {
+        await serialized(() => world.layer.transaction(async (tx) => {
           const { generation } = await ops(tx).readDeliveryState();
           await ops(tx).writeClaim({ runId: "00000000-0000-4000-8000-0000000000dd", generation: generation + 1, host: null, pid: null, startedAt: null });
-        });
+        }));
         const cause = await Promise.race([subscription.done, sleep(2000).then(() => "timeout")]);
         assert(cause instanceof DelivererLostError, `the stream ended with ${String(cause)}`);
       });

@@ -11,7 +11,7 @@ import { join } from "node:path";
 import type { ModelDocument } from "@meshfw/model";
 import { buildModel, generateFiles, writeGeneratedFiles, type ResolvedConfig } from "@meshfw/compiler";
 import { bindDomain, DatabaseBusyError, DelivererTakenError, type TableHandle } from "@meshfw/runtime";
-import { busConformance, setDeliveryTiming, testBus } from "@meshfw/runtime/testing";
+import { busConformance, claimRenewalConformance, setDeliveryTiming, testBus } from "@meshfw/runtime/testing";
 import build from "../src/build.ts";
 import { createSchema, sqlite } from "../src/index.ts";
 import { sqliteWith } from "../src/layer.ts";
@@ -78,6 +78,38 @@ for (const kind of ["memory", "file"] as const) {
     for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
   });
 }
+
+describe("renewClaim on a file database, outside the layer's queue", () => {
+  const dirs: string[] = [];
+  afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  const fileOf = (layer: { readonly database?: string }) => files.get(layer)!;
+  const files = new WeakMap<object, string>();
+  const make = async (withTables: boolean) => {
+    const scratch = mkdtempSync(join(tmpdir(), "mesh-renew-claim-"));
+    dirs.push(scratch);
+    const file = join(scratch, "app.db");
+    const layer = sqlite({ file });
+    if (withTables) await createSchema(layer, tables);
+    files.set(layer, file);
+    return layer;
+  };
+  const checks = claimRenewalConformance(() => make(true), {
+    bareLayer: () => make(false),
+    sibling: async (layer) => sqlite({ file: fileOf(layer) }),
+  });
+  test("a memory database has no renewal outside its queue, a file database has one", async () => {
+    const memory = sqlite({ file: ":memory:" });
+    const file = await make(true);
+    try {
+      expect(typeof memory.renewClaim).toBe("undefined");
+      expect(typeof file.renewClaim).toBe("function");
+    } finally { await memory.close(); await file.close(); }
+  });
+  test("every check runs, the held-row one included", () => {
+    expect(Object.keys(checks).length).toBe(4);
+  });
+  for (const [name, check] of Object.entries(checks)) test(name, check, 30_000);
+});
 
 describe("data-sqlite's claim", () => {
   let scratch: string;

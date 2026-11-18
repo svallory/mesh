@@ -9,22 +9,10 @@ import {
 } from "./deliverer.ts";
 import { holeError } from "./events.ts";
 import { NO_RENAMES } from "./stored-names.ts";
+import { RenewalUnsettled, Renewals } from "./renewal.ts";
 import {
   CursorAheadError, DatabaseBusyError, DelivererLostError, DelivererTakenError, EventUndeclaredError, EventsDeletedError, FrameworkError, HandlerLostError,
 } from "./errors.ts";
-
-/**
- * How long past the lapse a renewal may still settle before core gives it up: the adapter's own deadline (its lock
- * wait, its retry) ends at the lapse, and its error should be the one reported.
- */
-const RENEW_GRACE_MS = 50;
-
-/**
- * Core's own deadline for a renewal: still unsettled `RENEW_GRACE_MS` past the lapse. That is not a lock wait the
- * adapter reported; the database or the renewal's connection stopped answering, or (through `transaction`) the
- * renewal never left the layer's queue.
- */
-class RenewalUnsettled extends Error {}
 
 /**
  * Delivery from several processes (multi mode; design `notes/architecture/m9-multi-process-design.md`, rules M, P, L, R,
@@ -150,11 +138,8 @@ export class MultiClaim implements ClaimStrategy {
   #renewal: ReturnType<typeof setTimeout> | undefined;
   /** A tick's lease work while it runs: a tick that comes meanwhile only renews. */
   #leaseWork: Promise<void> | undefined;
-  /**
-   * The adapter's last renewal statement (not core's race against the lapse), settled either way, and the time core
-   * gives it up: `release` waits for it until then.
-   */
-  #renewing: { readonly settled: Promise<void>; readonly until: number } = { settled: Promise.resolve(), until: 0 };
+  /** The renewals, each raced against the lapse; `release` waits for the last one's statement. */
+  readonly #renewals = new Renewals();
   #halted = true;
 
   constructor(readonly deliverer: Deliverer) {}
@@ -384,16 +369,9 @@ export class MultiClaim implements ClaimStrategy {
     const renewal = layer.renewProcess
       ? layer.renewProcess(RUN_ID, timing.lapseMs, { deadline })
       : layer.transaction((tx) => multiOperations(tx).renewProcess(RUN_ID, timing.lapseMs), { waitMs: Math.max(1, deadline - Date.now()) });
-    // `release` waits for the statement itself, which may outlive the race below, until core gives it up.
-    this.#renewing = { settled: renewal.then(() => undefined, () => undefined), until: deadline + RENEW_GRACE_MS };
     // A real deadline from issue time: a renewal still unsettled when the row lapses (a connection that never answers,
     // a queue that never reaches it) is given up, whatever it does afterwards.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const expired = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { reject(new RenewalUnsettled()); }, Math.max(0, deadline - Date.now()) + RENEW_GRACE_MS);
-    });
-    try { return await Promise.race([renewal, expired]); }
-    finally { clearTimeout(timer); renewal.catch(() => undefined); }
+    return this.#renewals.race(renewal, deadline);
   }
 
   /**
@@ -743,10 +721,7 @@ export class MultiClaim implements ClaimStrategy {
     // as a serialization failure and leave the row to lapse instead of going at once. So wait for the adapter's
     // statement, though not past the time core gave it up: a statement that never answers would hold the release (and
     // stop) for good. A release beside such a statement may then fail on the row lock; that is ignored and the row lapses.
-    const { settled, until } = this.#renewing;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([settled, new Promise<void>((resolve) => { timer = setTimeout(resolve, Math.max(0, until - Date.now())); })]);
-    clearTimeout(timer);
+    await this.#renewals.settled();
     try {
       await this.deliverer.layer.transaction(async (tx) => {
         const ops = multiOperations(tx);

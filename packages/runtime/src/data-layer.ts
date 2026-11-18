@@ -595,8 +595,9 @@ export interface TransactionOptions {
    * How long to wait for another connection's write lock, in milliseconds, in place of the adapter's default, counted
    * from when the transaction reaches the front of the layer's queue (not from the call). On SQLite it bounds the wait in
    * all; on Postgres it bounds each lock wait (`lock_timeout`), so a transaction that takes several locks can wait
-   * several times over. Core sets it for the claim renewal and a process-row renewal made through `transaction` (the
-   * time left until the lapse; see `DataLayer.renewProcess`) and for a multi-process tick's lease work (the time left until the next renewal is due).
+   * several times over. Core sets it for a claim or process-row renewal made through `transaction` (the time left until
+   * the lapse; see `DataLayer.renewClaim` and `DataLayer.renewProcess`) and for a multi-process tick's lease work (the
+   * time left until the next renewal is due).
    */
   readonly waitMs?: number;
 }
@@ -670,6 +671,18 @@ export interface DataLayer {
    * drops that connection), so neither `close()` nor a later renewal waits on it for good.
    */
   renewProcess?(runId: string, lapseMs: number, options: { readonly deadline: number }): Promise<boolean>;
+  /**
+   * Optional. `DeliveryOperations.renewClaim` outside the transaction queue (single mode's claim renewal, spec "The
+   * claim"; mesh-yd0i), with the same contract as `renewProcess`: one autocommit statement on a connection of its own,
+   * matching the run id and the generation; a lock wait on the claim's row ends at `deadline` with `DatabaseBusyError`;
+   * refused inside a transaction of this layer; settles soon after `deadline` even when its connection stops answering.
+   * Core renews the claim through it when the layer has it, with the time the claim lapses as the deadline; without it,
+   * through `transaction`. The claim's row is the one every handler transaction and deletion batch locks first (on
+   * Postgres `readDeliveryState` reads it `FOR UPDATE`; on SQLite every transaction holds the one write lock), so the
+   * renewal still waits for those, this layer's included, but no longer behind the queue's other transactions.
+   * data-postgres has it; data-sqlite has it for a file database.
+   */
+  renewClaim?(runId: string, generation: number, options: { readonly deadline: number }): Promise<boolean>;
   /** Release the adapter's connection and other owned handles. Rejects while
    * transactions are running or queued, leaving the layer open. Idempotent.
    * Releases handles only: a later transaction must open the layer again, on the

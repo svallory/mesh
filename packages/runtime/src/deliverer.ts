@@ -15,6 +15,7 @@ import {
 } from "./events.ts";
 import type { ActionContext } from "./index.ts";
 import { NO_RENAMES, storedNamesOf, storedToDeclared } from "./stored-names.ts";
+import { RenewalUnsettled, Renewals } from "./renewal.ts";
 import { MultiClaim, ackOwned, adoptOwned, declarerOf, forgetOwned, isMultiProcess, keepOwned, multiOperations, openOwned, type Adopted, type KeepChange } from "./multi-process.ts";
 
 /**
@@ -986,6 +987,8 @@ class SingleClaim implements ClaimStrategy {
   generation = 0;
   #registered: readonly RegisteredHandler[] = Object.freeze([]);
   #renewal: ReturnType<typeof setTimeout> | undefined;
+  /** The renewals outside the queue, each raced against the lapse; `release` waits for the last one's statement. */
+  readonly #renewals = new Renewals();
 
   constructor(readonly deliverer: Deliverer) {}
 
@@ -1043,7 +1046,8 @@ class SingleClaim implements ClaimStrategy {
    * Renew the claim in one statement matching the run id and the generation; a blocked renewal waits until the lapse.
    * A `DatabaseBusyError` that is not a lock wait (`reason` other than `"locked"` or `"lock-timeout"`: a serialization
    * failure, a deadlock, a lost connection) is retried, at once and then every 500 ms, until the renewal succeeds or
-   * the lapse passes; only then is the claim lost, naming the last reason.
+   * the lapse passes; only then is the claim lost, naming the last reason. The renewal goes outside the layer's queue
+   * when the layer offers that (`#renewOnce`), so no transaction of the layer delays it (mesh-yd0i).
    */
   async tick(): Promise<void> {
     const deliverer = this.deliverer;
@@ -1052,8 +1056,7 @@ class SingleClaim implements ClaimStrategy {
     const deadline = deliverer.renewedAt + timing.lapseMs;
     for (let attempt = 0; ; attempt++) {
       try {
-        const waitMs = Math.max(1, deadline - Date.now());
-        const renewed = await deliverer.layer.transaction((tx) => operations(tx).renewClaim(RUN_ID, generation), { waitMs });
+        const renewed = await this.#renewOnce(generation, deadline);
         if (!deliverer.holding || this.generation !== generation) return;
         if (!renewed) { deliverer.lose("a renewal of the claim updated no row, so another process has taken it over"); return; }
         deliverer.renewedAt = Date.now();
@@ -1061,6 +1064,10 @@ class SingleClaim implements ClaimStrategy {
         return;
       } catch (error) {
         if (!deliverer.holding || this.generation !== generation) return;
+        if (error instanceof RenewalUnsettled) {
+          deliverer.lose("a renewal of the claim was still unsettled when the claim lapsed: the database or the renewal's connection stopped answering");
+          return;
+        }
         if (!(error instanceof DatabaseBusyError)) {
           deliverer.lose(`a renewal of the claim failed: ${error instanceof Error ? error.message : String(error)}`);
           return;
@@ -1080,6 +1087,24 @@ class SingleClaim implements ClaimStrategy {
     }
   }
 
+  /**
+   * One renewal statement, waiting for a lock at most until `deadline`, the time the claim lapses (spec, "The claim";
+   * mesh-yd0i). On a layer with `DataLayer.renewClaim` it goes outside the transaction queue, so no other transaction
+   * of the layer, a round's or the application's, running or queued, delays it; it still waits for the claim's row,
+   * which every handler transaction and deletion batch locks first (this layer's own included), and core gives it up
+   * once it is still unsettled just past the lapse (`Renewals.race`), so a connection that stops answering loses the
+   * claim at the lapse. On a layer without it the renewal goes through `transaction`, as before, where it waits behind
+   * whatever is queued ahead of it (the layer counts `waitMs` from the front of its queue): no race there, since a
+   * layer without the method may be a memory database, which no other process can claim, and a late renewal that
+   * still matches the generation keeps the claim.
+   */
+  #renewOnce(generation: number, deadline: number): Promise<boolean> {
+    const layer = this.deliverer.layer;
+    if (!layer.renewClaim) {
+      return layer.transaction((tx) => operations(tx).renewClaim(RUN_ID, generation), { waitMs: Math.max(1, deadline - Date.now()) });
+    }
+    return this.#renewals.race(layer.renewClaim(RUN_ID, generation, { deadline }), deadline);
+  }
   handlers(): readonly RegisteredHandler[] {
     return this.#registered;
   }
@@ -1188,6 +1213,10 @@ class SingleClaim implements ClaimStrategy {
   }
 
   async release(quiet: boolean): Promise<void> {
+    // A renewal outside the queue may still be running: released beside it, the release could wait on the claim's row
+    // lock or fail as a serialization failure and leave the claim to lapse instead of going at once. So wait for the
+    // adapter's statement, though not past the time core gave it up (`Renewals.settled`).
+    await this.#renewals.settled();
     try {
       await this.deliverer.layer.transaction((tx) => operations(tx).releaseClaim(RUN_ID, this.generation));
     } catch (error) {
