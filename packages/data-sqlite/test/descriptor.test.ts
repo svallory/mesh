@@ -45,7 +45,8 @@ test("layers over one file share one database name, absolute; another file has i
   try {
     const file = join(dir, "app.db");
     const one = sqlite({ file });
-    const same = sqlite({ file: join(dir, ".", "sub", "..", "app.db") });
+    // Spelled by hand: `join` would normalise it to `file` and prove nothing.
+    const same = sqlite({ file: `${dir}/./sub/../app.db` });
     const other = sqlite({ file: join(dir, "other.db") });
     expect(one.database).toBe(file);
     expect(same.database).toBe(one.database);
