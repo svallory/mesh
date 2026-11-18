@@ -36,6 +36,12 @@ const FIRST_DELAY = 1_000;
 const LAST_DELAY = 30_000;
 /** How many skipped rows (events not in `events`) go unacknowledged at most before one `ack` passes them. */
 const ACK_EVERY = 100;
+/**
+ * How long a skipped row waits for another row before it is acknowledged alone. Without it, a few skipped rows and then
+ * nothing would stay unacknowledged until the next sent row, holding the outbox's rows and making the deliverer report
+ * the outlet as not acknowledging.
+ */
+const IDLE_ACK = 1_000;
 /** The words of Redis's refusal of an entry id that is not above the stream's top one. */
 const NOT_ABOVE_TOP = "equal or smaller than the target stream top item";
 
@@ -159,6 +165,8 @@ class Outlet {
   #skipped = 0;
   #closing: Promise<void> | undefined;
   #finished = false;
+  /** The pending idle acknowledgement of skipped rows (`IDLE_ACK`), cleared when a row arrives, at the end and by close(). */
+  #idle: ReturnType<typeof setTimeout> | undefined;
   /** Ends the back-off wait running now, if any. */
   #wake: (() => void) | undefined;
   /** The wait before a reopen after an overflow that acknowledged nothing since the open before it. */
@@ -177,6 +185,8 @@ class Outlet {
     // A round may feed a row before `subscribe` resolves: the callback waits for the handle it acknowledges through.
     const subscription = await subscribe(this.binding, { name: this.name, ...(after !== undefined ? { after } : {}) }, async (event) => {
       const open = await opened;
+      // An idle acknowledgement still running finishes first, so no acknowledgement passes a later one.
+      await this.#running?.catch(() => undefined);
       const run = this.#row(event, open);
       this.#running = run;
       try { await run; } finally { if (this.#running === run) this.#running = undefined; }
@@ -190,10 +200,12 @@ class Outlet {
   }
 
   async #row(event: EventRecord, open: Open): Promise<void> {
+    this.#cancelIdle();
     if (open.ended || this.#closing) return;
     if (!this.options.events.has(event.name)) {
       this.#pending = event.position;
       if (++this.#skipped >= ACK_EVERY) await this.#ackPending(open);
+      else this.#idleAck(open);
       return;
     }
     if (!(await this.#send(event, open))) return;
@@ -202,6 +214,23 @@ class Outlet {
     open.progressed = true;
     this.#pending = 0;
     this.#skipped = 0;
+  }
+
+  #cancelIdle(): void {
+    if (this.#idle !== undefined) clearTimeout(this.#idle);
+    this.#idle = undefined;
+  }
+
+  /** Acknowledge the pending skipped rows once no row came for `IDLE_ACK`, unless a row is being handled then. */
+  #idleAck(open: Open): void {
+    this.#cancelIdle();
+    this.#idle = setTimeout(() => {
+      this.#idle = undefined;
+      if (open.ended || this.#closing || this.#running !== undefined) return;
+      const run = this.#ackPending(open).catch((error: unknown) => { if (!open.ended) this.#report(error); });
+      this.#running = run;
+      void run.finally(() => { if (this.#running === run) this.#running = undefined; });
+    }, IDLE_ACK);
   }
 
   async #ackPending(open: Open): Promise<void> {
@@ -256,7 +285,7 @@ class Outlet {
     try { onError(error); } catch (thrown) { console.error(`Mesh (redisOutlet ${this.name}): onError threw:`, thrown, "while handed:", error); }
   }
 
-  /** A back-off wait, the only timer the outlet starts; `close()` and the end of the stream cut it short. */
+  /** A back-off wait; `close()` and the end of the stream cut it short. The outlet's other timer is the idle acknowledgement. */
   #sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => { this.#wake = undefined; resolve(); }, ms);
@@ -267,6 +296,7 @@ class Outlet {
   /** The subscription's stream ended: reopen after an overflow once Redis answers (O6), else end the outlet. */
   async #ended(open: Open, reason: unknown): Promise<void> {
     open.ended = true;
+    this.#cancelIdle();
     this.#wake?.();
     if (this.#closing) return;
     if (reason instanceof SubscriptionOverflowError) {
@@ -315,6 +345,7 @@ class Outlet {
 
   close(): Promise<void> {
     return this.#closing ??= (async () => {
+      this.#cancelIdle();
       this.#wake?.();
       await this.#running?.catch(() => undefined);
       const open = this.#open;

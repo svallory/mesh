@@ -136,6 +136,16 @@ describeServer("redisOutlet against Redis", () => {
     expect(await position(binding, outlet.name)).toBe(150);
   });
 
+  test("a few skipped rows and then nothing are acknowledged once the queue goes idle, without close()", async () => {
+    const { binding, draft } = await freshBinding(project());
+    const outlet = await redisOutlet(binding, { url: redisUrl!, stream: key("idle"), events: [PAID], maxLength: 1000 });
+    for (let i = 0; i < 3; i++) await draft();
+    await binding.deliver();
+    await until(async () => (await position(binding, outlet.name)) === 3, "the idle skipped rows are acknowledged", 4000);
+    await outlet.close();
+    expect(await outlet.done).toBeNull();
+  });
+
   test("an entry this outbox already wrote (sent, not acknowledged, then a crash) is not written again, and the row is acknowledged", async () => {
     const { binding, paid } = await freshBinding(project());
     const stream = key("replay");
