@@ -49,6 +49,34 @@ describe("bad calls on two tags each report", () => {
       "  actions\n    create :c on=f()\n    update :u on=(List)\n  relationships\n    belongs-to :a entity=getList()\n",
       [["MESH_UNKNOWN_COMMAND", 6, 14], ["MESH_UNKNOWN_COMMAND", 7, 17], ["MESH_ENTITY_REFERENCE", 9, 18]],
     ],
+    [
+      "two bad string lines and two bad belongs-to lines",
+      "    string :s match=x\n    string :t match=y\n  relationships\n    belongs-to :a entity=getList()\n    belongs-to :b entity=(List)\n",
+      [["MESH_ATTRIBUTE_RULE", 5, 14], ["MESH_ATTRIBUTE_RULE", 6, 14], ["MESH_ENTITY_REFERENCE", 8, 18], ["MESH_ENTITY_REFERENCE", 9, 25]],
+    ],
+  ])("%s", (_label, body, expected) => {
+    expect(codes(body)).toEqual(expected);
+  });
+});
+
+// These hooks went from a throw to an explicit `continue`, `else if` or `break` when `ctx.fail` became `ctx.report`.
+describe("hooks whose control flow changed each report every bad line", () => {
+  test.each([
+    [
+      "handles: a call, an empty list and a wrapped reference on three handler lines",
+      "  handlers\n    listen :a [on=getEvent()] ({ event }) {}\n    listen :b [on=[]] ({ event }) {}\n    process :c [on=(List)] ({ event }) {}\n",
+      [["MESH_UNKNOWN_EVENT", 6, 15], ["MESH_UNKNOWN_EVENT", 7, 15], ["MESH_UNKNOWN_EVENT", 8, 19]],
+    ],
+    [
+      "references: an empty actions= and an actions= that is no list on two policies",
+      "  policies\n    policy :p actions=[]\n      authorize-if=() => true\n    policy :q actions=x\n      authorize-if=() => true\n",
+      [["MESH_MEMBER_REFERENCE", 6, 14], ["MESH_MEMBER_REFERENCE", 8, 14]],
+    ],
+    [
+      "rollups: a string of= on one line, a bad of= and a two-parameter filter= on the next",
+      '  computed\n    count :n of="lines"\n    count :m of=1 filter=(a, b) => true\n',
+      [["MESH_ROLLUP_PATH_STRING", 6, 13], ["MESH_ROLLUP_PATH", 7, 13], ["MESH_EXPRESSION", 7, 29]],
+    ],
   ])("%s", (_label, body, expected) => {
     expect(codes(body)).toEqual(expected);
   });
@@ -59,11 +87,24 @@ describe("still one error per option", () => {
     expect(codes("    enum :e values=x\n")).toEqual([["MESH_ATOM_LIST", 5, 12]]);
   });
 
-  test("a line the shared checks reported skips its tag's own hook; the tag's other lines still get it", () => {
+  test("the tag's own hook still checks the options the shared checks did not report", () => {
     // Line 6 has a value= that is no function (shared check) and a match= that is no regular expression (string's hook).
     expect(codes("  computed\n    string :b value=x match=y\n    string :a match=x\n")).toEqual([
       ["MESH_EXPRESSION", 6, 14],
+      ["MESH_ATTRIBUTE_RULE", 6, 22],
       ["MESH_ATTRIBUTE_RULE", 7, 14],
     ]);
+  });
+
+  test("a name the shared checks reported is not reported again as missing", () => {
+    expect(codes('  actions\n    create name="x" on=f()\n    read name="y"\n')).toEqual([
+      ["MESH_NAME", 6, 11],
+      ["MESH_UNKNOWN_COMMAND", 6, 20],
+      ["MESH_NAME", 7, 9],
+    ]);
+  });
+
+  test("a call with tag parameters is not handed to its tag's hook", () => {
+    expect(codes("    string|x| :t match=y\n")).toEqual([["MESH_SYNTAX", 5, 4]]);
   });
 });

@@ -2,7 +2,6 @@ import type {
   Attr,
   ContractMap,
   CustomTag,
-  ContractFailOptions,
   CustomTagAttribute,
   SourceSpan,
   TagCall,
@@ -866,28 +865,30 @@ export const SYNTAX_MESSAGES = Object.freeze({
 //
 // Every check reports through `ctx.report` (MX 0.1.0-alpha.38, `@unstable`), which does not end the hook, so a file
 // shows every bad line of a tag, not only the first (`ctx.fail` throws). One error per option: once an option is
-// reported, the next option is checked. A call the universal checks reported is not handed to the tag's own hook, which
-// would otherwise report the same option again in other words (`values=x`: `MESH_ATOM_LIST` here, `MESH_ENUM_VALUES`
-// there); the other calls of the tag are.
+// reported, the next option is checked. The tag's own hook then sees each call without the options reported here, so it
+// does not report the same option again in other words (`values=x`: `MESH_ATOM_LIST` here, `MESH_ENUM_VALUES` there),
+// and still checks the line's other options (`string :b value=x match=y` reports both). Two exceptions: a call with tag
+// parameters or a variable binding is not handed on at all, since none of its options is a declaration; and a reported
+// `name=` stays on the call, since the hooks only test that a name is present (`answers`, `namedRead`) and would
+// otherwise report the same name as missing.
 for (const contract of Object.values(contracts)) {
   const analyze = contract.analyze;
   contract.analyze = (calls, ctx) => {
     const clean: TagCall[] = [];
     for (const call of calls) {
-      let reported = false;
-      const report = (message: string, at: ContractFailOptions["at"], code: string) => {
-        ctx.report(message, { at, code });
-        reported = true;
-      };
-      if (call.params.length || call.var)
-        report(SYNTAX_MESSAGES.params, call.loc, "MESH_SYNTAX");
+      if (call.params.length || call.var) {
+        ctx.report(SYNTAX_MESSAGES.params, { at: call.loc, code: "MESH_SYNTAX" });
+        continue;
+      }
+      const reported = new Set<Attr>();
       for (const [key, declaration] of Object.entries(
         contract.attributes ?? {},
       )) {
         const a = get(call, key);
         if (!a) continue;
         if (a.kind === "bound") {
-          report(SYNTAX_MESSAGES.bound, a.loc, "MESH_SYNTAX");
+          ctx.report(SYNTAX_MESSAGES.bound, { at: a.loc, code: "MESH_SYNTAX" });
+          reported.add(a);
           continue;
         }
         const n = node(a);
@@ -897,7 +898,8 @@ for (const contract of Object.values(contracts)) {
             n?.type ?? "",
           )
         ) {
-          report(`${key} must be a function as written`, a.loc, "MESH_EXPRESSION");
+          ctx.report(`${key} must be a function as written`, { at: a.loc, code: "MESH_EXPRESSION" });
+          reported.add(a);
           continue;
         }
         if (
@@ -905,12 +907,14 @@ for (const contract of Object.values(contracts)) {
           declaration.type === "mesh:Atom" &&
           !(a.kind === "static" && a.node?.type === "mesh:Atom")
         ) {
-          report(SYNTAX_MESSAGES.name, a.loc, "MESH_NAME");
+          ctx.report(SYNTAX_MESSAGES.name, { at: a.loc, code: "MESH_NAME" });
+          reported.add(a);
           continue;
         }
         if (["auto", "types", "values"].includes(key)) {
           if (n?.type !== "ArrayExpression") {
-            report(`${key} must be a list of atoms`, a.loc, "MESH_ATOM_LIST");
+            ctx.report(`${key} must be a list of atoms`, { at: a.loc, code: "MESH_ATOM_LIST" });
+            reported.add(a);
             continue;
           }
           // Only atoms can repeat: an item that is none (`values=[a, b]`, `values=[:a, "a"]`) is refused where it is
@@ -919,7 +923,8 @@ for (const contract of Object.values(contracts)) {
           const atoms = atomsOf(a);
           const names = (n.elements ?? []).flatMap((e) => (e && atoms.has(e) && typeof e.value === "string" ? [e.value] : []));
           if (!n.elements?.length || new Set(names).size !== names.length) {
-            report(`${key} must be non-empty with no repeated values`, a.loc, "MESH_ATOM_LIST");
+            ctx.report(`${key} must be non-empty with no repeated values`, { at: a.loc, code: "MESH_ATOM_LIST" });
+            reported.add(a);
             continue;
           }
         }
@@ -927,10 +932,14 @@ for (const contract of Object.values(contracts)) {
           declaration.type === "string" &&
           a.kind === "static" &&
           !a.value.trim()
-        )
-          report(`${key} cannot be empty`, a.loc, "MESH_TEXT");
+        ) {
+          ctx.report(`${key} cannot be empty`, { at: a.loc, code: "MESH_TEXT" });
+          reported.add(a);
+        }
       }
-      if (!reported) clean.push(call);
+      clean.push(reported.size
+        ? { ...call, attrs: call.attrs.filter((a) => !reported.has(a) || (a.kind !== "spread" && a.name === "name")) }
+        : call);
     }
     if (clean.length) analyze?.(clean, ctx);
   };

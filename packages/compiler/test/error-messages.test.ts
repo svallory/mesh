@@ -167,6 +167,22 @@ describe("`for` and `if` in an entity file say what to write (mesh-for-pipe-mess
     expect([d.position.line, d.position.column]).toEqual([line, column]);
   });
 
+  // MX alpha.38 ("the real error wins", `core-diagnostic-order`): an `if` or `for` holding an option tag is reported at the
+  // option tag, since no Mesh contract declares one, and the construct gives no error (errors.md). Without the `@x` it is the
+  // construct, as above.
+  test.each([
+    ["an if under a string", "    string :s\n      if=true\n        @x\n", "string", 6, 8],
+    ["a for under a string", "    string :s\n      for|x| of=[1]\n        @x\n", "string", 6, 8],
+    ["an if directly under entity", "  if=true\n    @x\n", "entity", 5, 4],
+  ])("%s holding an option tag is MESH_UNKNOWN_OPTION_TAG at the option tag alone", (_, body, parent, line, column) => {
+    const result = build(keyed + body);
+    expect(result.document).toBeNull();
+    expect(result.diagnostics.map((d) => [d.code, d.message, d.position.line, d.position.column])).toEqual([
+      ["MESH_UNKNOWN_OPTION_TAG", `\`${parent}\`: unknown option tag \`@x\``, line, column],
+    ]);
+    expect(build(keyed + body.replace(/\n *@x\n$/, "\n")).diagnostics.map((d) => d.code)).toEqual(["MESH_STRUCTURAL_CONSTRUCT"]);
+  });
+
   // No Mesh contract has a `transform` (contracts.test.ts pins it), so the tag here is a test contract added to Mesh's dialect.
   // MX lowers such a tag's body while the transform runs, and reports a construct in it then, with the same code and message.
   describe("under a tag with a transform (a test contract on MESH_DIALECT)", () => {

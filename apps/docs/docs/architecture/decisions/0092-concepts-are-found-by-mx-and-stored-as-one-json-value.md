@@ -23,7 +23,7 @@ lead, delegated (ruling D36 rules the eleven open decisions of the concepts desi
 
 A concept is a value with no identity and one or more fields (ADR-0080, decision 3), declared in a concept file, `concepts/Money.mesh.mx`, whose root line is `concept :Money` and whose children are field lines written as an event's. It is used as a PascalCase line head, `Money :total`, with no import: the nearest `concepts` folder up the file's folders wins (ADR-0085's amendment of 2026-10-17).
 
-MX ships what ADR-0085 asked for (since MX `0.1.0-alpha.18`; Mesh pins alpha.37): the manifest keys (`tagDirs`, `tagExtensions`, `sidecars`, `reservedTags`), the scan that names a tag after each file of a declared folder, the synchronous `Dialect.tagFile` hook that turns a tag file into a contract the first time a use is lowered, and `DelegatedTag.definedIn`, the tag file a use resolved to. Three facts shape how Mesh uses them:
+MX ships what ADR-0085 asked for (since MX `0.1.0-alpha.18`; Mesh pins alpha.38): the manifest keys (`tagDirs`, `tagExtensions`, `sidecars`, `reservedTags`), the scan that names a tag after each file of a declared folder, the synchronous `Dialect.tagFile` hook that turns a tag file into a contract the first time a use is lowered, and `DelegatedTag.definedIn`, the tag file a use resolved to. Three facts shape how Mesh uses them:
 
 - `lowerSource` does not scan. A use is `MESH_UNKNOWN_TAG` until the scanned map is passed as `customTags`.
 - A closed parent refuses a child its `children` does not list, and a `"*"` wildcard never claims a registered name; no contract can list the concepts of a project in advance.

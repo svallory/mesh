@@ -534,8 +534,10 @@ export function checkDocsSamples(dir: string) {
 
 /**
  * Every diagnostic a Mesh hook raises through MX carries a `MESH_*` code. MX gives a hook error with no code its own
- * `MX_DIALECT_ERROR`, which would make Mesh's error look like MX's. So each `ctx.fail(`, `unit.fail(` and bare `fail(` call in
- * the dialect, the syntax rows and the contracts passes an options object with `code:`. Text-only: the call is read up to
+ * `MX_DIALECT_ERROR` (or `MX_TAG_ERROR`), which would make Mesh's error look like MX's. So each `ctx.fail(`, `unit.fail(`,
+ * bare `fail(`, `ctx.report(`, `unit.report(` and bare `report(` call in the dialect, the syntax rows and the contracts
+ * passes an options object with `code:`. A local helper that forwards to one of them hides its callers' codes from this
+ * scan, so call MX directly. Text-only: the call is read up to
  * its balanced closing parenthesis (strings and template literals are skipped over by the scan, not parsed).
  */
 export function checkHookFailCodes(srcDir: string): string[] {
@@ -544,7 +546,7 @@ export function checkHookFailCodes(srcDir: string): string[] {
   const found: string[] = [];
   for (const file of hookFiles) {
     const text = readFileSync(file, "utf8");
-    for (const match of text.matchAll(/(?<![\w.])(?:(?:ctx|unit)\.)?fail\(|\b(?:ctx|unit)\.fail\(/g)) {
+    for (const match of text.matchAll(/(?<![\w.])(?:(?:ctx|unit)\.)?(?:fail|report)\(/g)) {
       const start = match.index! + match[0].length;
       let depth = 1;
       let i = start;
